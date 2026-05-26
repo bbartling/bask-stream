@@ -39,6 +39,7 @@ moduleManifest {
   preferredSymbol.set("NF")
   vendor.set("QAGraphics")
   vendorVersion.set("1.0")
+  bajaVersion.set("4.10")
   description.set("NiagaraFalls external API service")
 }
 
@@ -50,7 +51,8 @@ tasks.matching { it.name == "writeModuleXml" }.configureEach {
     if (!moduleXml.isFile) return@doLast
 
     val original = moduleXml.readText()
-    val updated = original.replace(" vendorVersion=\"4.15\"", "")
+    val updated = Regex("(<dependency\\b[^>]*?)\\s+vendorVersion=\"[^\"]*\"")
+      .replace(original, "$1")
 
     if (updated != original) {
       moduleXml.writeText(updated)
