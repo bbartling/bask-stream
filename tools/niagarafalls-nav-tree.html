@@ -1,0 +1,2183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>NiagaraFalls API Companion</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef1f4;
+      --panel: #fbfcfd;
+      --panel-2: #f5f7f8;
+      --ink: #172026;
+      --muted: #68747d;
+      --line: #d6dde2;
+      --line-strong: #aeb9c1;
+      --accent: #1268a7;
+      --accent-2: #0c7a5a;
+      --warn: #986313;
+      --bad: #a63434;
+      --shadow: 0 18px 44px rgba(23, 32, 38, 0.12);
+      --radius: 8px;
+      --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      --sans: "Aptos", "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(90deg, rgba(18, 104, 167, 0.08) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(18, 104, 167, 0.06) 1px, transparent 1px),
+        var(--bg);
+      background-size: 32px 32px;
+      color: var(--ink);
+      font: 14px/1.45 var(--sans);
+      letter-spacing: 0;
+    }
+
+    button,
+    input {
+      font: inherit;
+      letter-spacing: 0;
+    }
+
+    button {
+      min-height: 34px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    button:disabled {
+      color: #9aa4ab;
+      cursor: not-allowed;
+      background: #f4f6f7;
+    }
+
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    button.primary:hover:not(:disabled) {
+      background: #0f5b92;
+      color: #fff;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: 100vh;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: rgba(251, 252, 253, 0.94);
+      backdrop-filter: blur(10px);
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto;
+      gap: 18px;
+      align-items: end;
+      width: min(1480px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 18px 0;
+    }
+
+    .guide {
+      display: grid;
+      grid-template-columns: minmax(280px, 1fr) minmax(260px, 420px);
+      gap: 12px;
+      width: min(1480px, calc(100vw - 32px));
+      margin: -4px auto 14px;
+    }
+
+    .guide-box,
+    .health-box,
+    .test-strip {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.82);
+    }
+
+    .guide-box,
+    .health-box {
+      padding: 10px 12px;
+    }
+
+    .guide-title,
+    .health-title {
+      margin-bottom: 5px;
+      color: #33424b;
+      font-size: 12px;
+      font-weight: 850;
+      text-transform: uppercase;
+    }
+
+    .guide-text,
+    .health-grid {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .guide-text code {
+      padding: 1px 4px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: #f8fafb;
+      color: #26343d;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .health-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 5px 10px;
+    }
+
+    .health-grid span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .health-grid b {
+      color: #33424b;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      width: min(1480px, calc(100vw - 32px));
+      margin: 0 auto 14px;
+    }
+
+    .tab-button {
+      min-width: 118px;
+      padding: 0 14px;
+      border-color: var(--line);
+      color: #3c4a53;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .tab-button.active {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .tab-button.active:hover:not(:disabled) {
+      color: #fff;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.1;
+      font-weight: 750;
+    }
+
+    .subtitle {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .connection {
+      display: grid;
+      grid-template-columns: minmax(210px, 280px) minmax(120px, 160px) minmax(150px, 190px) minmax(210px, 300px) auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    label {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    input {
+      width: 100%;
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #fff;
+      color: var(--ink);
+      padding: 7px 10px;
+    }
+
+    input:focus,
+    button:focus-visible,
+    .node-row:focus-visible {
+      outline: 2px solid rgba(18, 104, 167, 0.28);
+      outline-offset: 2px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .status-pill {
+      display: inline-grid;
+      grid-template-columns: 8px auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      color: var(--muted);
+      background: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #9aa4ab;
+    }
+
+    .status-pill.open .dot {
+      background: var(--accent-2);
+    }
+
+    .status-pill.error .dot {
+      background: var(--bad);
+    }
+
+    .view {
+      width: min(1480px, calc(100vw - 32px));
+      margin: 16px auto;
+      min-height: calc(100vh - 118px);
+    }
+
+    .view[hidden] {
+      display: none;
+    }
+
+    .test-view {
+      display: grid;
+      grid-template-columns: minmax(360px, 520px) minmax(420px, 1fr);
+      grid-template-rows: auto 1fr;
+      gap: 16px;
+    }
+
+    .guide-view {
+      display: block;
+    }
+
+    .guide-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(340px, 0.9fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .guide-panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 10px 28px rgba(23, 32, 38, 0.08);
+      overflow: hidden;
+    }
+
+    .guide-panel.full {
+      grid-column: 1 / -1;
+    }
+
+    .guide-panel-head {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-2);
+    }
+
+    .guide-panel h2 {
+      margin: 0;
+      color: #26343d;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .guide-panel h3 {
+      margin: 18px 0 8px;
+      color: #33424b;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .guide-panel-body {
+      padding: 14px 16px 16px;
+      color: #3a4650;
+      overflow-x: auto;
+    }
+
+    .guide-panel p {
+      margin: 0 0 10px;
+      color: var(--muted);
+    }
+
+    .guide-panel code {
+      padding: 1px 4px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: #f8fafb;
+      color: #26343d;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .guide-list {
+      margin: 0;
+      padding-left: 18px;
+      color: #3a4650;
+    }
+
+    .guide-list li {
+      margin: 7px 0;
+    }
+
+    .guide-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .guide-note {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #f8fafb;
+      padding: 10px;
+      color: var(--muted);
+    }
+
+    .guide-note strong {
+      display: block;
+      margin-bottom: 4px;
+      color: #33424b;
+    }
+
+    .ops-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      font-size: 13px;
+    }
+
+    .ops-table th,
+    .ops-table td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .ops-table th {
+      background: #f6f8f9;
+      color: #50606a;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .ops-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .test-strip {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+      box-shadow: 0 8px 24px rgba(23, 32, 38, 0.08);
+    }
+
+    .test-actions,
+    .preset-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .test-actions button,
+    .preset-actions button {
+      min-height: 30px;
+      padding: 0 10px;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .test-copy {
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .panel {
+      min-width: 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      min-height: 46px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-2);
+    }
+
+    .panel-title {
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: #33424b;
+    }
+
+    .tree-panel {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: 0;
+    }
+
+    .tree {
+      overflow: auto;
+      padding: 8px 8px 18px;
+      background: #fff;
+    }
+
+    .empty,
+    .hint,
+    .error-box {
+      margin: 14px;
+      padding: 12px;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: #fbfcfd;
+    }
+
+    .error-box {
+      color: var(--bad);
+      border-color: rgba(166, 52, 52, 0.28);
+      background: rgba(166, 52, 52, 0.06);
+    }
+
+    .tree-node {
+      --level: 0;
+    }
+
+    .node-row {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: 4px;
+      align-items: start;
+      width: 100%;
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      padding: 5px 7px 5px calc(7px + (var(--level) * 18px));
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .node-row:hover {
+      background: #f3f8fb;
+      border-color: rgba(18, 104, 167, 0.16);
+    }
+
+    .node-row.selected {
+      background: #e8f2f9;
+      border-color: rgba(18, 104, 167, 0.34);
+    }
+
+    .twisty {
+      display: grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      margin-top: 1px;
+      color: #4e5b64;
+      border-radius: 6px;
+    }
+
+    .twisty.can-expand:hover {
+      background: #dceaf3;
+      color: var(--accent);
+    }
+
+    .twisty-icon {
+      display: inline-block;
+      transition: transform 0.14s ease;
+    }
+
+    .tree-node.expanded > .node-row .twisty-icon {
+      transform: rotate(90deg);
+    }
+
+    .node-main {
+      min-width: 0;
+    }
+
+    .node-name {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .node-name-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .node-type {
+      margin-top: 2px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 5px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 18px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: #eef2f5;
+      color: #45545e;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .badge.point,
+    .badge.history {
+      background: #e5f0f7;
+      color: #125a8b;
+    }
+
+    .badge.writable,
+    .badge.device {
+      background: #e4f3ed;
+      color: #0d644b;
+    }
+
+    .badge.alarm,
+    .badge.schedule {
+      background: #f8eddc;
+      color: #7a4e0f;
+    }
+
+    .badge.missing {
+      background: #f1f2f3;
+      color: #7a858c;
+    }
+
+    .children {
+      display: none;
+    }
+
+    .tree-node.expanded > .children {
+      display: block;
+    }
+
+    .node-state {
+      margin: 6px 0 6px calc(38px + (var(--level) * 18px));
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .node-state.error {
+      color: var(--bad);
+    }
+
+    .details-panel {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: 0;
+    }
+
+    .details {
+      overflow: auto;
+      padding: 14px;
+      background: #fff;
+    }
+
+    .details h2 {
+      margin: 0 0 3px;
+      font-size: 22px;
+      line-height: 1.15;
+    }
+
+    .details .ord {
+      font-family: var(--mono);
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .section {
+      margin-top: 16px;
+      border-top: 1px solid var(--line);
+      padding-top: 14px;
+    }
+
+    .section h3 {
+      margin: 0 0 10px;
+      color: #33424b;
+      font-size: 13px;
+      text-transform: uppercase;
+    }
+
+    .kv {
+      display: grid;
+      grid-template-columns: minmax(110px, 180px) minmax(0, 1fr);
+      gap: 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .kv div {
+      min-width: 0;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+      overflow-wrap: anywhere;
+    }
+
+    .kv div:nth-child(2n + 1) {
+      background: #f6f8f9;
+      color: #50606a;
+      font-weight: 750;
+    }
+
+    .kv div:nth-last-child(-n + 2) {
+      border-bottom: 0;
+    }
+
+    .live-summary {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #f7fafb;
+      padding: 12px;
+    }
+
+    .live-value {
+      min-width: 0;
+      color: var(--ink);
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.15;
+      overflow-wrap: anywhere;
+    }
+
+    .live-status {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .live-status.ok {
+      color: var(--accent-2);
+    }
+
+    .live-status.bad {
+      color: var(--bad);
+    }
+
+    .live-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .live-actions button {
+      padding: 0 11px;
+    }
+
+    .raw {
+      width: 100%;
+      max-height: 380px;
+      margin: 0;
+      overflow: auto;
+      border-radius: var(--radius);
+      background: #101820;
+      color: #e8edf1;
+      padding: 12px;
+      font: 12px/1.45 var(--mono);
+      white-space: pre;
+    }
+
+    .log {
+      max-width: 48vw;
+      color: var(--muted);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    @media (max-width: 980px) {
+      .topbar,
+      .guide,
+      .guide-layout,
+      .guide-grid,
+      .connection,
+      .test-strip,
+      .test-view {
+        grid-template-columns: 1fr;
+      }
+
+      .test-view {
+        grid-template-rows: auto auto auto;
+      }
+
+      .actions {
+        justify-content: flex-start;
+      }
+
+      .view {
+        min-height: auto;
+      }
+
+      .panel {
+        min-height: 420px;
+      }
+
+      .log {
+        max-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="topbar">
+        <div>
+          <h1>NiagaraFalls API Companion</h1>
+          <div class="subtitle">Companion browser app for browsing, live value checks, metadata review, and subscription diagnostics.</div>
+        </div>
+        <div class="connection">
+          <label>
+            Station URL
+            <input id="stationUrl" value="https://192.168.0.125" spellcheck="false">
+          </label>
+          <label>
+            User
+            <input id="username" value="admin" autocomplete="username" spellcheck="false">
+          </label>
+          <label>
+            Password
+            <input id="password" type="password" autocomplete="current-password">
+          </label>
+          <label>
+            Root ORD
+            <input id="rootOrd" value="slot:/Drivers" spellcheck="false">
+          </label>
+          <div class="actions">
+            <span id="status" class="status-pill"><span class="dot"></span><span>disconnected</span></span>
+            <button id="connect" class="primary">Connect</button>
+            <button id="disconnect" disabled>Disconnect</button>
+            <button id="reload" disabled>Reload Root</button>
+          </div>
+        </div>
+      </div>
+      <div class="guide">
+        <div class="guide-box">
+          <div class="guide-title">Quick Start</div>
+          <div class="guide-text">
+            For best results, run <code>node tools/niagarafalls-nav-tree-server.mjs --port=8787</code> and open <code>http://127.0.0.1:8787/</code>. The helper handles local browser login, self-signed certs, and WebSocket proxying for this test app.
+          </div>
+        </div>
+        <div class="health-box">
+          <div class="health-title">Station API</div>
+          <div id="healthGrid" class="health-grid">
+            <span><b>Mode</b> idle</span>
+            <span><b>API</b> unknown</span>
+            <span><b>Connections</b> -</span>
+            <span><b>Subscriptions</b> -</span>
+          </div>
+        </div>
+      </div>
+      <nav class="tabs" role="tablist" aria-label="NiagaraFalls companion sections">
+        <button id="guideTab" class="tab-button active" type="button" role="tab" aria-controls="guideView" aria-selected="true">Guide</button>
+        <button id="testTab" class="tab-button" type="button" role="tab" aria-controls="testView" aria-selected="false">Test Console</button>
+      </nav>
+    </header>
+
+    <main id="guideView" class="view guide-view" aria-labelledby="guideTab">
+      <div class="guide-layout">
+        <section class="guide-panel">
+          <div class="guide-panel-head">
+            <h2>Install And Connect</h2>
+          </div>
+          <div class="guide-panel-body">
+            <ol class="guide-list">
+              <li>Install the compiled NiagaraFalls module jar on the station host and restart Niagara.</li>
+              <li>Add the NiagaraFalls service to the station, then verify <code>GET /falls/health</code> responds after login.</li>
+              <li>Create or choose a Niagara user with only the station permissions your external app needs.</li>
+              <li>From the app, authenticate to the station, open <code>wss://&lt;station&gt;/falls</code>, then call <code>capabilities</code>.</li>
+              <li>Use <code>browse</code> or <code>search</code> for discovery, <code>read</code> for snapshots, and subscriptions for live screens.</li>
+            </ol>
+          </div>
+        </section>
+
+        <section class="guide-panel">
+          <div class="guide-panel-head">
+            <h2>External Graphics Pattern</h2>
+          </div>
+          <div class="guide-panel-body">
+            <p>Keep station structure and metadata cached in your app. Request metadata during initial discovery and refresh passes, not on every live-value update.</p>
+            <ol class="guide-list">
+              <li>Browse shallow roots such as <code>slot:/Drivers</code>, <code>slot:/Schedules</code>, and history ORDs as needed.</li>
+              <li>Store node identity with <code>ord</code>, <code>slotPath</code>, parent, type, features, operations, and metadata evidence.</li>
+              <li>When a graphic opens, call <code>replace_subscriptions</code> for the points on that screen.</li>
+              <li>When the graphic closes, call <code>release_subscriptions</code>. Leases clean up missed releases.</li>
+              <li>Keep alarms subscribed separately when the app needs global alarm awareness.</li>
+            </ol>
+          </div>
+        </section>
+
+        <section class="guide-panel">
+          <div class="guide-panel-head">
+            <h2>Network And Security</h2>
+          </div>
+          <div class="guide-panel-body">
+            <div class="guide-grid">
+              <div class="guide-note"><strong>HTTPS certificate</strong>Browsers and native clients must trust the station certificate or explicitly allow it in development.</div>
+              <div class="guide-note"><strong>Firewall path</strong>Allow the station web port and WebSocket upgrade traffic to <code>/falls</code>.</div>
+              <div class="guide-note"><strong>Niagara login</strong>The API runs under the authenticated Niagara session and station permissions.</div>
+              <div class="guide-note"><strong>Reverse proxies</strong>Preserve cookies, TLS, and <code>Upgrade: websocket</code> headers if routing through a gateway.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="guide-panel">
+          <div class="guide-panel-head">
+            <h2>Scale Rules</h2>
+          </div>
+          <div class="guide-panel-body">
+            <ol class="guide-list">
+              <li>Use shallow browse calls and drill in; avoid deep all-station metadata pulls on every startup.</li>
+              <li>Use <code>metadata: "full"</code> for discovery or refresh and omit metadata for routine tree navigation.</li>
+              <li>Use grouped subscriptions for active views so the server can diff and share point listeners.</li>
+              <li>Read histories and schedules on demand unless a screen actually needs them.</li>
+              <li>Use <code>subscription_status</code> during commissioning to confirm point counts, groups, and leases.</li>
+            </ol>
+          </div>
+        </section>
+
+        <section class="guide-panel full">
+          <div class="guide-panel-head">
+            <h2>Operation Reference</h2>
+          </div>
+          <div class="guide-panel-body">
+            <table class="ops-table">
+              <thead>
+                <tr>
+                  <th>Need</th>
+                  <th>Operation</th>
+                  <th>Use</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Verify API</td><td><code>ping</code>, <code>capabilities</code></td><td>Confirm connection and adapt to the deployed module version.</td></tr>
+                <tr><td>Discover tree</td><td><code>browse</code>, <code>describe</code>, <code>search</code></td><td>Build equipment, point, schedule, history, and metadata views.</td></tr>
+                <tr><td>Live values</td><td><code>read</code>, <code>replace_subscriptions</code></td><td>Paint current values immediately, then receive COV updates for active views.</td></tr>
+                <tr><td>Write points</td><td><code>describe_write</code>, <code>write</code></td><td>Render safe controls, then set, override, auto, or emergency override writable points.</td></tr>
+                <tr><td>Alarms</td><td><code>read_alarms</code>, <code>subscribe_alarms</code></td><td>Load a bounded snapshot, then maintain client alarm state with event pushes.</td></tr>
+                <tr><td>Schedules</td><td><code>read_schedule</code></td><td>Read schedule state and weekly/calendar data for UI display.</td></tr>
+                <tr><td>Histories</td><td><code>describe_history</code>, <code>read_history</code></td><td>Find trend availability and load chart records by time range.</td></tr>
+                <tr><td>Model changes</td><td><code>subscribe_model</code></td><td>Receive branch-scoped hints, then refresh affected nodes with browse or describe.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="guide-panel full">
+          <div class="guide-panel-head">
+            <h2>Using This Companion App</h2>
+          </div>
+          <div class="guide-panel-body">
+            <p>The Test Console tab connects to a real station, browses from the typed Root ORD, shows metadata when available, reads selected point values, and subscribes to the selected point with grouped subscriptions when the module supports them.</p>
+            <p>The local helper is only for this standalone file. Production apps should implement their own Niagara login flow, trust model, and MessagePack WebSocket client.</p>
+            <p>The full protocol reference lives in <code>docs/THIRD_PARTY_API.md</code>.</p>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <main id="testView" class="view test-view" aria-labelledby="testTab" hidden>
+      <section class="test-strip" aria-label="Quick tests">
+        <div>
+          <div class="guide-title">Quick Tests</div>
+          <div id="testCopy" class="test-copy">Connect, then use generic station roots or the typed Root ORD to verify core API behavior without leaving the page.</div>
+        </div>
+        <div class="test-actions">
+          <button data-action="load-current-root">Current Root</button>
+          <button data-action="preset-root" data-root="slot:/Drivers">Drivers</button>
+          <button data-action="preset-root" data-root="slot:/Schedules">Schedules</button>
+          <button id="capabilities" disabled>Capabilities</button>
+          <button id="subStatus" disabled>Subscription Status</button>
+        </div>
+      </section>
+
+      <section class="panel tree-panel" aria-label="Navigation tree">
+        <div class="panel-head">
+          <div class="panel-title">Nav Tree</div>
+          <div id="treeCount" class="log">No nodes loaded</div>
+        </div>
+        <div id="tree" class="tree">
+          <div class="hint">Connect to the station, then browse from the configured root ORD.</div>
+        </div>
+      </section>
+
+      <section class="panel details-panel" aria-label="Node details">
+        <div class="panel-head">
+          <div class="panel-title">Selected Node</div>
+          <div id="lastEvent" class="log"></div>
+        </div>
+        <div id="details" class="details">
+          <div class="empty">Select a node to inspect its properties and metadata.</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      const els = {
+        stationUrl: document.getElementById("stationUrl"),
+        username: document.getElementById("username"),
+        password: document.getElementById("password"),
+        rootOrd: document.getElementById("rootOrd"),
+        guideTab: document.getElementById("guideTab"),
+        testTab: document.getElementById("testTab"),
+        guideView: document.getElementById("guideView"),
+        testView: document.getElementById("testView"),
+        connect: document.getElementById("connect"),
+        disconnect: document.getElementById("disconnect"),
+        reload: document.getElementById("reload"),
+        capabilities: document.getElementById("capabilities"),
+        subStatus: document.getElementById("subStatus"),
+        status: document.getElementById("status"),
+        healthGrid: document.getElementById("healthGrid"),
+        testCopy: document.getElementById("testCopy"),
+        tree: document.getElementById("tree"),
+        treeCount: document.getElementById("treeCount"),
+        details: document.getElementById("details"),
+        lastEvent: document.getElementById("lastEvent")
+      };
+
+      const state = {
+        ws: null,
+        seq: 0,
+        pending: new Map(),
+        nodes: new Map(),
+        rootOrd: null,
+        selectedOrd: null,
+        totalNodes: 0,
+        transport: null,
+        keepaliveTimer: null,
+        health: null,
+        capabilities: null,
+        subscriptionStatus: null,
+        values: new Map(),
+        selectedPointOrd: null,
+        subscriptionPointOrd: null,
+        usingViewGroup: false,
+        viewGroup: "demo:selected-point"
+      };
+
+      const te = new TextEncoder();
+      const td = new TextDecoder();
+
+      const msgpack = {
+        enc(value) {
+          const u8 = (...values) => Uint8Array.from(values);
+          const join = (parts) => {
+            const length = parts.reduce((total, part) => total + part.length, 0);
+            const out = new Uint8Array(length);
+            let offset = 0;
+            for (const part of parts) {
+              out.set(part, offset);
+              offset += part.length;
+            }
+            return out;
+          };
+          const writeString = (text) => {
+            const encoded = te.encode(text);
+            if (encoded.length <= 31) return join([u8(0xa0 | encoded.length), encoded]);
+            if (encoded.length <= 255) return join([u8(0xd9, encoded.length), encoded]);
+            if (encoded.length <= 65535) return join([u8(0xda, encoded.length >> 8, encoded.length & 255), encoded]);
+            const head = new Uint8Array(5);
+            const view = new DataView(head.buffer);
+            view.setUint8(0, 0xdb);
+            view.setUint32(1, encoded.length);
+            return join([head, encoded]);
+          };
+          const writeInteger = (number) => {
+            if (number >= 0 && number <= 127) return u8(number);
+            if (number >= -32 && number < 0) return u8(256 + number);
+            if (number >= -128 && number <= 127) return u8(0xd0, number & 255);
+            if (number >= -32768 && number <= 32767) return u8(0xd1, (number >> 8) & 255, number & 255);
+            if (number >= -2147483648 && number <= 2147483647) {
+              return u8(0xd2, (number >> 24) & 255, (number >> 16) & 255, (number >> 8) & 255, number & 255);
+            }
+            const out = new Uint8Array(9);
+            const view = new DataView(out.buffer);
+            if (number >= 0) {
+              view.setUint8(0, 0xcf);
+              view.setBigUint64(1, BigInt(number));
+            }
+            else {
+              view.setUint8(0, 0xd3);
+              view.setBigInt64(1, BigInt(number));
+            }
+            return out;
+          };
+          if (value == null) return u8(0xc0);
+          if (typeof value === "boolean") return u8(value ? 0xc3 : 0xc2);
+          if (typeof value === "string") return writeString(value);
+          if (typeof value === "number") {
+            if (Number.isInteger(value)) return writeInteger(value);
+            const out = new Uint8Array(9);
+            const view = new DataView(out.buffer);
+            view.setUint8(0, 0xcb);
+            view.setFloat64(1, value);
+            return out;
+          }
+          if (Array.isArray(value)) {
+            const body = value.map((entry) => msgpack.enc(entry));
+            if (value.length <= 15) return join([u8(0x90 | value.length), ...body]);
+            return join([u8(0xdc, value.length >> 8, value.length & 255), ...body]);
+          }
+          if (typeof value === "object") {
+            const entries = Object.entries(value);
+            const body = [];
+            for (const [key, entry] of entries) {
+              body.push(writeString(key), msgpack.enc(entry));
+            }
+            if (entries.length <= 15) return join([u8(0x80 | entries.length), ...body]);
+            return join([u8(0xde, entries.length >> 8, entries.length & 255), ...body]);
+          }
+          throw new Error("Unsupported value for MessagePack.");
+        },
+
+        dec(bytes) {
+          const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+          let offset = 0;
+          const take = (length) => {
+            const out = new Uint8Array(bytes.buffer, bytes.byteOffset + offset, length);
+            offset += length;
+            return out;
+          };
+          const read = () => {
+            const tag = view.getUint8(offset++);
+            if (tag <= 0x7f) return tag;
+            if (tag >= 0xe0) return tag - 256;
+            if ((tag & 0xe0) === 0xa0) return td.decode(take(tag & 31));
+            if ((tag & 0xf0) === 0x90) return Array.from({ length: tag & 15 }, read);
+            if ((tag & 0xf0) === 0x80) return readMap(tag & 15);
+            switch (tag) {
+              case 0xc0: return null;
+              case 0xc2: return false;
+              case 0xc3: return true;
+              case 0xc4: return take(view.getUint8(offset++));
+              case 0xc5: { const length = view.getUint16(offset); offset += 2; return take(length); }
+              case 0xc6: { const length = view.getUint32(offset); offset += 4; return take(length); }
+              case 0xca: { const value = view.getFloat32(offset); offset += 4; return value; }
+              case 0xcb: { const value = view.getFloat64(offset); offset += 8; return value; }
+              case 0xcc: return view.getUint8(offset++);
+              case 0xcd: { const value = view.getUint16(offset); offset += 2; return value; }
+              case 0xce: { const value = view.getUint32(offset); offset += 4; return value; }
+              case 0xcf: { const value = Number(view.getBigUint64(offset)); offset += 8; return value; }
+              case 0xd0: return view.getInt8(offset++);
+              case 0xd1: { const value = view.getInt16(offset); offset += 2; return value; }
+              case 0xd2: { const value = view.getInt32(offset); offset += 4; return value; }
+              case 0xd3: { const value = Number(view.getBigInt64(offset)); offset += 8; return value; }
+              case 0xd9: { const length = view.getUint8(offset++); return td.decode(take(length)); }
+              case 0xda: { const length = view.getUint16(offset); offset += 2; return td.decode(take(length)); }
+              case 0xdb: { const length = view.getUint32(offset); offset += 4; return td.decode(take(length)); }
+              case 0xdc: { const length = view.getUint16(offset); offset += 2; return Array.from({ length }, read); }
+              case 0xdd: { const length = view.getUint32(offset); offset += 4; return Array.from({ length }, read); }
+              case 0xde: { const length = view.getUint16(offset); offset += 2; return readMap(length); }
+              case 0xdf: { const length = view.getUint32(offset); offset += 4; return readMap(length); }
+              default: throw new Error("Unsupported MessagePack byte 0x" + tag.toString(16) + ".");
+            }
+          };
+          const readMap = (length) => {
+            const out = {};
+            for (let i = 0; i < length; i++) out[read()] = read();
+            return out;
+          };
+          return read();
+        }
+      };
+
+      function setStatus(text, mode) {
+        els.status.className = "status-pill" + (mode ? " " + mode : "");
+        els.status.lastElementChild.textContent = text;
+      }
+
+      function logEvent(text) {
+        els.lastEvent.textContent = text;
+      }
+
+      function setActiveView(name) {
+        const showGuide = name === "guide";
+        els.guideView.hidden = !showGuide;
+        els.testView.hidden = showGuide;
+        els.guideTab.classList.toggle("active", showGuide);
+        els.testTab.classList.toggle("active", !showGuide);
+        els.guideTab.setAttribute("aria-selected", String(showGuide));
+        els.testTab.setAttribute("aria-selected", String(!showGuide));
+      }
+
+      function renderHealth() {
+        const health = state.health || {};
+        const caps = state.capabilities || {};
+        const limits = caps.limits || {};
+        const session = caps.session || {};
+        const status = state.subscriptionStatus || {};
+        const statusSession = status.session || {};
+        const apiVersion = health.apiVersion || caps.apiVersion || "unknown";
+        const activeConnections = valueOr(limits.activeConnections, health.activeConnections, "-");
+        const totalSubscriptions = valueOr(limits.totalSubscriptions, health.totalSubscriptions, "-");
+        const pointSubs = valueOr(statusSession.pointSubscriptions, session.pointSubscriptions, "-");
+        const groupCount = valueOr(statusSession.subscriptionGroups, session.subscriptionGroups, "-");
+        els.healthGrid.innerHTML = [
+          '<span><b>Mode</b> ' + escapeHtml(state.transport || "idle") + '</span>',
+          '<span><b>API</b> ' + escapeHtml(apiVersion) + '</span>',
+          '<span><b>Connections</b> ' + escapeHtml(activeConnections) + '</span>',
+          '<span><b>Total Subs</b> ' + escapeHtml(totalSubscriptions) + '</span>',
+          '<span><b>Point Subs</b> ' + escapeHtml(pointSubs) + '</span>',
+          '<span><b>Groups</b> ' + escapeHtml(groupCount) + '</span>'
+        ].join("");
+      }
+
+      function valueOr(...values) {
+        for (const value of values) {
+          if (value !== undefined && value !== null && value !== "") return value;
+        }
+        return "";
+      }
+
+      function supportsOperation(name) {
+        const operations = state.capabilities && Array.isArray(state.capabilities.operations)
+          ? state.capabilities.operations
+          : [];
+        return operations.includes(name);
+      }
+
+      function startKeepalive() {
+        stopKeepalive();
+        state.keepaliveTimer = setInterval(() => {
+          if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+          send("ping").catch((error) => logEvent("Keepalive failed: " + (error.message || error)));
+        }, 25000);
+      }
+
+      function stopKeepalive() {
+        if (state.keepaliveTimer) {
+          clearInterval(state.keepaliveTimer);
+          state.keepaliveTimer = null;
+        }
+      }
+
+      function stationOrigin() {
+        const raw = els.stationUrl.value.trim() || "https://192.168.0.125";
+        return new URL(raw).origin;
+      }
+
+      function directWebSocketUrl() {
+        const url = new URL(stationOrigin());
+        url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+        url.pathname = "/falls";
+        url.search = "";
+        url.hash = "";
+        return url.href;
+      }
+
+      function shouldUseLocalProxy() {
+        return location.protocol === "file:" ||
+          location.protocol === "http:" &&
+          (location.hostname === "127.0.0.1" || location.hostname === "localhost" || location.hostname === "[::1]");
+      }
+
+      function localProxyUrl() {
+        if (location.protocol === "file:") {
+          return "ws://127.0.0.1:8787/app-ws";
+        }
+        const url = new URL(location.href);
+        url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+        url.pathname = "/app-ws";
+        url.search = "";
+        url.hash = "";
+        return url.href;
+      }
+
+      function escapeHtml(value) {
+        return String(value == null ? "" : value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function ordOf(node) {
+        return node && (node.slotPath || node.ord || node.name);
+      }
+
+      function labelOf(node) {
+        return node && (node.display || node.name || node.slotPath || node.ord || "Unnamed");
+      }
+
+      function canBrowse(node) {
+        return Boolean(node && (node.hasChildren || (node.operations || []).includes("browse")));
+      }
+
+      function nodeBadges(node) {
+        const metadata = node.metadata;
+        const classification = metadata && metadata.classification ? metadata.classification : {};
+        const features = Array.isArray(node.features) ? node.features : [];
+        const badges = [];
+        if (node.kind) badges.push(["kind", node.kind]);
+        if (classification.isControlPoint || features.includes("point")) badges.push(["point", "point"]);
+        if (node.writable || classification.isWritablePoint) badges.push(["writable", "writable"]);
+        if (classification.isDriverDevice) badges.push(["device", "device"]);
+        if (classification.isSchedule || features.includes("schedule")) badges.push(["schedule", "schedule"]);
+        if (classification.hasAlarm || features.includes("alarm")) badges.push(["alarm", "alarm"]);
+        if (classification.hasHistory || features.includes("history")) badges.push(["history", "history"]);
+        badges.push([metadata ? "meta" : "missing", metadata ? "metadata" : "no metadata"]);
+        return badges;
+      }
+
+      function writeMessage(message) {
+        if (state.transport === "proxy") {
+          state.ws.send(JSON.stringify(message));
+        }
+        else {
+          state.ws.send(msgpack.enc(message));
+        }
+      }
+
+      function send(op, fields) {
+        if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+          return Promise.reject(new Error("WebSocket is not connected."));
+        }
+        const id = String(++state.seq);
+        const message = Object.assign({ op, id }, fields || {});
+        writeMessage(message);
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(() => {
+            state.pending.delete(id);
+            reject(new Error(op + " timed out."));
+          }, 15000);
+          state.pending.set(id, {
+            resolve: (response) => {
+              clearTimeout(timer);
+              if (response.op === "error") {
+                reject(new Error(response.code ? response.code + ": " + response.message : response.message));
+              }
+              else {
+                resolve(response);
+              }
+            }
+          });
+        });
+      }
+
+      function fire(op, fields) {
+        if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return false;
+        writeMessage(Object.assign({ op }, fields || {}));
+        return true;
+      }
+
+      function upsertNode(node, parentOrd) {
+        const ord = ordOf(node);
+        if (!ord) return null;
+        const existing = state.nodes.get(ord) || {};
+        const merged = Object.assign({}, existing, {
+          ord,
+          parentOrd: parentOrd || existing.parentOrd || null,
+          node,
+          expanded: existing.expanded || false,
+          loading: false,
+          error: null,
+          childrenLoaded: existing.childrenLoaded || false,
+          childOrds: existing.childOrds || []
+        });
+        state.nodes.set(ord, merged);
+        return merged;
+      }
+
+      function applyBrowseNode(node, parentOrd) {
+        const record = upsertNode(node, parentOrd);
+        if (!record) return null;
+        if (Object.prototype.hasOwnProperty.call(node, "children")) {
+          const children = Array.isArray(node.children) ? node.children : [];
+          record.childOrds = children.map((child) => {
+            const childRecord = applyBrowseNode(child, record.ord);
+            return childRecord && childRecord.ord;
+          }).filter(Boolean);
+          record.childrenLoaded = true;
+        }
+        record.loading = false;
+        record.error = null;
+        return record;
+      }
+
+      function renderTree() {
+        if (!state.rootOrd || !state.nodes.has(state.rootOrd)) {
+          els.tree.innerHTML = '<div class="hint">Connect to the station, then browse from the configured root ORD.</div>';
+          els.treeCount.textContent = "No nodes loaded";
+          return;
+        }
+        state.totalNodes = state.nodes.size;
+        els.treeCount.textContent = state.totalNodes + " node" + (state.totalNodes === 1 ? "" : "s") + " loaded";
+        els.tree.innerHTML = renderNode(state.nodes.get(state.rootOrd), 0);
+      }
+
+      function renderNode(record, level) {
+        const node = record.node;
+        const hasChildren = canBrowse(node);
+        const classes = [
+          "tree-node",
+          record.expanded ? "expanded" : "",
+          record.loading ? "loading" : ""
+        ].filter(Boolean).join(" ");
+        const selected = record.ord === state.selectedOrd ? " selected" : "";
+        const twisty = hasChildren ? '<span class="twisty-icon">›</span>' : "";
+        const badges = nodeBadges(node).map(([cls, label]) => (
+          '<span class="badge ' + escapeHtml(cls) + '">' + escapeHtml(label) + '</span>'
+        )).join("");
+        const childHtml = record.expanded
+          ? '<div class="children">' + (record.childOrds || []).map((ord) => renderNode(state.nodes.get(ord), level + 1)).join("") + '</div>'
+          : "";
+        const stateHtml = record.loading
+          ? '<div class="node-state" style="--level:' + level + '">Loading children...</div>'
+          : (record.error ? '<div class="node-state error" style="--level:' + level + '">' + escapeHtml(record.error) + '</div>' : "");
+        return [
+          '<div class="' + classes + '" data-ord="' + escapeHtml(record.ord) + '" style="--level:' + level + '">',
+          '<div class="node-row' + selected + '" tabindex="0" role="button" data-action="select" data-ord="' + escapeHtml(record.ord) + '">',
+          '<span class="twisty ' + (hasChildren ? 'can-expand' : '') + '" data-action="toggle" data-ord="' + escapeHtml(record.ord) + '">' + twisty + '</span>',
+          '<span class="node-main">',
+          '<span class="node-name"><span class="node-name-text">' + escapeHtml(labelOf(node)) + '</span></span>',
+          '<span class="node-type">' + escapeHtml(node.typeSpec || node.ord || "") + '</span>',
+          '<span class="badges">' + badges + '</span>',
+          '</span>',
+          '</div>',
+          stateHtml,
+          childHtml,
+          '</div>'
+        ].join("");
+      }
+
+      function renderDetails() {
+        if (!state.selectedOrd || !state.nodes.has(state.selectedOrd)) {
+          els.details.innerHTML = '<div class="empty">Select a node to inspect its properties and metadata.</div>';
+          return;
+        }
+        const node = state.nodes.get(state.selectedOrd).node;
+        const metadata = node.metadata;
+        const classification = metadata && metadata.classification ? metadata.classification : null;
+        const driver = metadata && metadata.driver ? metadata.driver : null;
+        const point = metadata && metadata.point ? metadata.point : null;
+        els.details.innerHTML = [
+          '<h2>' + escapeHtml(labelOf(node)) + '</h2>',
+          '<div class="ord">' + escapeHtml(node.ord || node.slotPath || "") + '</div>',
+          section("Basics", rows([
+            ["slotPath", node.slotPath],
+            ["name", node.name],
+            ["display", node.display],
+            ["typeSpec", node.typeSpec],
+            ["kind", node.kind],
+            ["hasChildren", node.hasChildren],
+            ["writable", node.writable],
+            ["features", listText(node.features)],
+            ["operations", listText(node.operations)]
+          ])),
+          isReadablePoint(node) ? section("Live Value", renderLiveValue(node)) : "",
+          metadata
+            ? [
+              section("Classification", rows(Object.entries(classification || {}))),
+              section("Parent", rows(summaryRows(metadata.parent))),
+              section("Ancestors", rows([["count", Array.isArray(metadata.ancestors) ? metadata.ancestors.length : 0], ["chain", ancestorChain(metadata.ancestors)]])),
+              section("Driver Evidence", rows([
+                ["driverBacked", driver && driver.isDriverBacked],
+                ["network", summaryLabel(driver && driver.network)],
+                ["device", summaryLabel(driver && driver.device)],
+                ["pointDeviceExt", summaryLabel(driver && driver.pointDeviceExt)],
+                ["proxyExt", summaryLabel(driver && driver.proxyExt)],
+                ["proxyExtType", driver && driver.proxyExtType],
+                ["readWriteMode", driver && driver.readWriteMode],
+                ["tuningPolicyName", driver && driver.tuningPolicyName]
+              ])),
+              section("Point Evidence", rows([
+                ["recognizedAsPoint", point && point.recognizedAsPoint],
+                ["writable", point && point.writable],
+                ["hasProxyExt", point && point.hasProxyExt],
+                ["hasHistoryExt", point && point.hasHistoryExt],
+                ["hasAlarmExt", point && point.hasAlarmExt],
+                ["activeLevel", point && point.activeLevel],
+                ["extensions", Array.isArray(point && point.extensions) ? point.extensions.length : 0],
+                ["tags", Array.isArray(metadata.tags) ? metadata.tags.length : 0],
+                ["relations", Array.isArray(metadata.relations) ? metadata.relations.length : 0]
+              ]))
+            ].join("")
+            : '<div class="section"><h3>Metadata</h3><div class="empty">Metadata unavailable for this node. Rebuild the module with metadata support or browse again with metadata enabled.</div></div>',
+          '<div class="section"><h3>Raw Node JSON</h3><pre class="raw">' + escapeHtml(JSON.stringify(node, null, 2)) + '</pre></div>'
+        ].join("");
+      }
+
+      function renderLiveValue(node) {
+        const pointOrd = pointOrdOf(node);
+        const entry = pointOrd ? state.values.get(pointOrd) : null;
+        const snapshot = entry && entry.snapshot ? entry.snapshot : null;
+        const connected = state.ws && state.ws.readyState === WebSocket.OPEN;
+        if (!pointOrd) {
+          return '<div class="empty">No slot ORD is available for this point.</div>';
+        }
+
+        const error = entry && entry.error ? entry.error : null;
+        const valueText = snapshot
+          ? (snapshot.displayValue != null && snapshot.displayValue !== "" ? snapshot.displayValue : formatValue(snapshot.value))
+          : (entry && entry.loading ? "Reading..." : "No value read yet");
+        const statusText = error
+          ? error
+          : (snapshot ? (snapshot.status || (snapshot.ok === false ? "not ok" : "ok")) : (connected ? "waiting for read" : "disconnected"));
+        const statusClass = error || snapshot && snapshot.ok === false ? "bad" : (snapshot ? "ok" : "");
+        const disabled = connected ? "" : " disabled";
+        const summary = [
+          '<div class="live-summary">',
+          '<div>',
+          '<div class="live-value">' + escapeHtml(valueText) + '</div>',
+          '<div class="live-status ' + statusClass + '">' + escapeHtml(statusText) + '</div>',
+          '</div>',
+          '<div class="live-actions"><button data-action="read-value" data-point="' + escapeHtml(pointOrd) + '"' + disabled + '>Read Now</button></div>',
+          '</div>'
+        ].join("");
+
+        const detailRows = [
+          ["point", pointOrd],
+          ["subscribed", entry && entry.subscribed],
+          ["subscriptionMode", entry && entry.mode],
+          ["lastUpdated", formatTimestamp(entry && entry.updatedAt)],
+          ["display", snapshot && snapshot.display],
+          ["valueType", snapshot && snapshot.valueType],
+          ["value", snapshot && snapshot.value],
+          ["displayValue", snapshot && snapshot.displayValue],
+          ["status", snapshot && snapshot.status],
+          ["ok", snapshot && snapshot.ok],
+          ["timestamp", formatTimestamp(snapshot && snapshot.timestamp)],
+          ["enumTag", snapshot && snapshot.enumTag],
+          ["enumOrdinal", snapshot && snapshot.enumOrdinal],
+          ["enumDisplay", snapshot && snapshot.enumDisplay],
+          ["enumOptions", Array.isArray(snapshot && snapshot.enumOptions) ? snapshot.enumOptions.length : ""],
+          ["code", snapshot && snapshot.code],
+          ["message", snapshot && snapshot.message]
+        ];
+        return summary + rows(detailRows);
+      }
+
+      function section(title, body) {
+        return '<div class="section"><h3>' + escapeHtml(title) + '</h3>' + body + '</div>';
+      }
+
+      function rows(entries) {
+        return '<div class="kv">' + entries.map(([key, value]) => (
+          '<div>' + escapeHtml(key) + '</div><div>' + escapeHtml(formatValue(value)) + '</div>'
+        )).join("") + '</div>';
+      }
+
+      function summaryRows(summary) {
+        return [
+          ["slotPath", summary && summary.slotPath],
+          ["name", summary && summary.name],
+          ["display", summary && summary.display],
+          ["typeSpec", summary && summary.typeSpec]
+        ];
+      }
+
+      function summaryLabel(summary) {
+        if (!summary || !summary.slotPath) return "";
+        return (summary.display || summary.name || summary.slotPath) + " | " + summary.slotPath;
+      }
+
+      function ancestorChain(ancestors) {
+        if (!Array.isArray(ancestors) || ancestors.length === 0) return "";
+        return ancestors.map((entry) => entry.display || entry.name || entry.slotPath).filter(Boolean).join(" / ");
+      }
+
+      function listText(value) {
+        return Array.isArray(value) ? value.join(", ") : "";
+      }
+
+      function formatValue(value) {
+        if (value == null) return "";
+        if (Array.isArray(value)) return value.join(", ");
+        if (typeof value === "object") return JSON.stringify(value);
+        return String(value);
+      }
+
+      function formatTimestamp(value) {
+        if (value == null || value === "") return "";
+        const numeric = typeof value === "number" ? value : Number(value);
+        if (!Number.isFinite(numeric)) return String(value);
+        return new Date(numeric).toLocaleString();
+      }
+
+      function pointOrdOf(node) {
+        return node && (node.slotPath || node.ord);
+      }
+
+      function isReadablePoint(node) {
+        if (!node) return false;
+        const operations = Array.isArray(node.operations) ? node.operations : [];
+        const features = Array.isArray(node.features) ? node.features : [];
+        const metadata = node.metadata || {};
+        const classification = metadata.classification || {};
+        const point = metadata.point || {};
+        return operations.includes("read") ||
+          operations.includes("subscribe") ||
+          features.includes("point") ||
+          node.kind === "point" ||
+          classification.isPoint ||
+          classification.isControlPoint ||
+          point.recognizedAsPoint;
+      }
+
+      function firstPoint(response, pointOrd) {
+        const points = response && Array.isArray(response.points) ? response.points : [];
+        return points.find((point) => point && point.point === pointOrd) || points[0] || null;
+      }
+
+      function mergePointValue(pointOrd, updates) {
+        const current = state.values.get(pointOrd) || {};
+        state.values.set(pointOrd, Object.assign({}, current, updates));
+      }
+
+      function snapshotError(snapshot) {
+        if (!snapshot) return "No point result returned.";
+        if (!snapshot.code) return null;
+        return snapshot.code + (snapshot.message ? ": " + snapshot.message : "");
+      }
+
+      function unsubscribeTrackedPoint() {
+        const pointOrd = state.subscriptionPointOrd;
+        if (!pointOrd) return;
+        if (state.usingViewGroup) {
+          fire("release_subscriptions", { group: state.viewGroup });
+        }
+        else {
+          fire("unsubscribe", { points: [pointOrd] });
+        }
+        mergePointValue(pointOrd, { subscribed: false, mode: "" });
+        state.subscriptionPointOrd = null;
+        state.usingViewGroup = false;
+      }
+
+      async function readPointValue(pointOrd) {
+        if (!pointOrd) return;
+        mergePointValue(pointOrd, { loading: true, error: null });
+        if (state.selectedPointOrd === pointOrd) renderDetails();
+        try {
+          const response = await send("read", { points: [pointOrd] });
+          const snapshot = firstPoint(response, pointOrd);
+          mergePointValue(pointOrd, {
+            loading: false,
+            error: snapshotError(snapshot),
+            snapshot,
+            updatedAt: Date.now()
+          });
+        }
+        catch (error) {
+          mergePointValue(pointOrd, {
+            loading: false,
+            error: error.message || String(error),
+            updatedAt: Date.now()
+          });
+        }
+        if (state.selectedPointOrd === pointOrd) renderDetails();
+      }
+
+      async function subscribePoint(pointOrd) {
+        if (!pointOrd || state.subscriptionPointOrd === pointOrd) return;
+        unsubscribeTrackedPoint();
+        state.subscriptionPointOrd = pointOrd;
+        const useViewGroup = supportsOperation("replace_subscriptions");
+        state.usingViewGroup = useViewGroup;
+        try {
+          const response = useViewGroup
+            ? await send("replace_subscriptions", { group: state.viewGroup, points: [pointOrd], leaseSec: 300 })
+            : await send("subscribe", { points: [pointOrd] });
+          const snapshot = firstPoint(response, pointOrd);
+          const error = snapshotError(snapshot);
+          if (error && state.subscriptionPointOrd === pointOrd) state.subscriptionPointOrd = null;
+          mergePointValue(pointOrd, {
+            loading: false,
+            error,
+            snapshot,
+            subscribed: !error,
+            mode: useViewGroup ? "view group" : "legacy",
+            updatedAt: Date.now()
+          });
+          if (useViewGroup) refreshSubscriptionStatus(false);
+        }
+        catch (error) {
+          if (state.subscriptionPointOrd === pointOrd) state.subscriptionPointOrd = null;
+          mergePointValue(pointOrd, {
+            loading: false,
+            error: error.message || String(error),
+            subscribed: false,
+            mode: "",
+            updatedAt: Date.now()
+          });
+        }
+        if (state.selectedPointOrd === pointOrd) renderDetails();
+      }
+
+      function trackSelectedPoint() {
+        const record = state.selectedOrd ? state.nodes.get(state.selectedOrd) : null;
+        const node = record && record.node;
+        const pointOrd = isReadablePoint(node) ? pointOrdOf(node) : null;
+        state.selectedPointOrd = pointOrd;
+        if (!pointOrd) {
+          unsubscribeTrackedPoint();
+          return;
+        }
+        readPointValue(pointOrd);
+        subscribePoint(pointOrd);
+      }
+
+      function handleCov(message) {
+        const points = Array.isArray(message.points) ? message.points : [];
+        let selectedUpdated = false;
+        for (const snapshot of points) {
+          if (!snapshot || !snapshot.point) continue;
+          mergePointValue(snapshot.point, {
+            loading: false,
+            error: snapshotError(snapshot),
+            snapshot,
+            subscribed: true,
+            mode: state.usingViewGroup ? "view group" : "legacy",
+            updatedAt: Date.now()
+          });
+          if (snapshot.point === state.selectedPointOrd) selectedUpdated = true;
+        }
+        if (points.length) logEvent("COV update for " + points.length + " point" + (points.length === 1 ? "" : "s"));
+        if (selectedUpdated) renderDetails();
+      }
+
+      function markValuesDisconnected() {
+        state.subscriptionPointOrd = null;
+        state.usingViewGroup = false;
+        for (const [pointOrd, entry] of state.values.entries()) {
+          state.values.set(pointOrd, Object.assign({}, entry, { loading: false, subscribed: false, mode: "" }));
+        }
+      }
+
+      async function browseRoot() {
+        unsubscribeTrackedPoint();
+        state.nodes.clear();
+        state.values.clear();
+        state.selectedOrd = null;
+        state.selectedPointOrd = null;
+        const rootOrd = els.rootOrd.value.trim() || "slot:/Drivers";
+        logEvent("Browsing " + rootOrd);
+        els.tree.innerHTML = '<div class="hint">Loading root...</div>';
+        try {
+          const response = await send("browse", { base: rootOrd, depth: 1, metadata: "full" });
+          const record = applyBrowseNode(response.node, null);
+          state.rootOrd = record ? record.ord : rootOrd;
+          if (record) {
+            record.expanded = true;
+            state.selectedOrd = record.ord;
+          }
+          renderTree();
+          renderDetails();
+          trackSelectedPoint();
+          logEvent("Loaded root " + state.rootOrd);
+        }
+        catch (error) {
+          els.tree.innerHTML = '<div class="error-box">' + escapeHtml(error.message || error) + '</div>';
+          els.treeCount.textContent = "Browse failed";
+          logEvent("Browse failed");
+        }
+      }
+
+      async function loadCapabilities(showDetails) {
+        try {
+          const response = await send("capabilities");
+          state.capabilities = response.capabilities || null;
+          renderHealth();
+          if (showDetails) showApiSummary("Capabilities", state.capabilities || response);
+          logEvent("Capabilities loaded");
+          return state.capabilities;
+        }
+        catch (error) {
+          logEvent("Capabilities failed: " + (error.message || error));
+          if (showDetails) showApiSummary("Capabilities Error", { error: error.message || String(error) });
+          return null;
+        }
+      }
+
+      async function refreshSubscriptionStatus(showDetails) {
+        if (!supportsOperation("subscription_status")) {
+          if (showDetails) showApiSummary("Subscription Status", { note: "Not supported by this deployed module version." });
+          return null;
+        }
+        try {
+          const response = await send("subscription_status", { includePoints: Boolean(showDetails) });
+          state.subscriptionStatus = response;
+          renderHealth();
+          if (showDetails) showApiSummary("Subscription Status", response);
+          logEvent("Subscription status loaded");
+          return response;
+        }
+        catch (error) {
+          logEvent("Subscription status failed: " + (error.message || error));
+          if (showDetails) showApiSummary("Subscription Status Error", { error: error.message || String(error) });
+          return null;
+        }
+      }
+
+      function showApiSummary(title, payload) {
+        els.details.innerHTML = [
+          '<h2>' + escapeHtml(title) + '</h2>',
+          '<div class="ord">NiagaraFalls API diagnostic output</div>',
+          '<div class="section"><h3>Summary</h3>' + rows(apiSummaryRows(payload)) + '</div>',
+          '<div class="section"><h3>Raw JSON</h3><pre class="raw">' + escapeHtml(JSON.stringify(payload, null, 2)) + '</pre></div>'
+        ].join("");
+      }
+
+      function apiSummaryRows(payload) {
+        const caps = payload && payload.apiVersion ? payload : {};
+        const session = payload && payload.session ? payload.session : {};
+        const limits = payload && payload.limits ? payload.limits : {};
+        const groups = payload && Array.isArray(payload.groups) ? payload.groups : [];
+        return [
+          ["apiVersion", caps.apiVersion || ""],
+          ["operations", Array.isArray(caps.operations) ? caps.operations.length : ""],
+          ["pointSubscriptions", session.pointSubscriptions],
+          ["subscriptionGroups", session.subscriptionGroups],
+          ["alarmSubscriptions", session.alarmSubscriptions],
+          ["modelSubscriptions", session.modelSubscriptions],
+          ["maxSubscriptionsPerClient", limits.maxSubscriptionsPerClient],
+          ["covBatchWindowMillis", limits.covBatchWindowMillis],
+          ["groups", groups.length]
+        ];
+      }
+
+      async function expandNode(ord) {
+        const record = state.nodes.get(ord);
+        if (!record || !canBrowse(record.node)) return;
+        if (record.childrenLoaded) {
+          record.expanded = !record.expanded;
+          renderTree();
+          return;
+        }
+        record.loading = true;
+        record.expanded = true;
+        renderTree();
+        try {
+          const response = await send("browse", { base: record.node.slotPath || record.node.ord, depth: 1, metadata: "full" });
+          const updated = applyBrowseNode(response.node, record.parentOrd);
+          if (updated) updated.expanded = true;
+          logEvent("Loaded children for " + labelOf(record.node));
+        }
+        catch (error) {
+          record.loading = false;
+          record.error = error.message || String(error);
+          logEvent("Child browse failed");
+        }
+        renderTree();
+        renderDetails();
+      }
+
+      function selectNode(ord) {
+        if (!state.nodes.has(ord)) return;
+        state.selectedOrd = ord;
+        renderTree();
+        renderDetails();
+        trackSelectedPoint();
+      }
+
+      async function loginDirect() {
+        const origin = stationOrigin();
+        const username = els.username.value.trim();
+        const password = els.password.value;
+        if (!username || !password) {
+          throw new Error("Station user and password are required.");
+        }
+
+        await fetch(origin + "/prelogin", { credentials: "include" });
+        const userStep = await fetch(origin + "/login", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "j_username=" + encodeURIComponent(username)
+        });
+        const userText = await userStep.text();
+        if (!userStep.ok || userText.indexOf("j_security_check") < 0) {
+          throw new Error("Username step failed with HTTP " + userStep.status + ".");
+        }
+
+        const nonce = randomBase64(16);
+        const clientFirstBare = "n=" + prepUsername(username) + ",r=" + nonce;
+        const serverFirstResponse = await fetch(origin + "/j_security_check/", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/x-niagara-login-support" },
+          body: "action=sendClientFirstMessage&clientFirstMessage=n,," + clientFirstBare
+        });
+        if (!serverFirstResponse.ok) {
+          throw new Error("SCRAM first message failed with HTTP " + serverFirstResponse.status + ".");
+        }
+        const serverFirst = (await serverFirstResponse.text()).trim();
+        const parsed = parseScram(serverFirst);
+        if (!parsed.r || parsed.r.indexOf(nonce) !== 0 || !parsed.s || !parsed.i) {
+          throw new Error("Invalid SCRAM server first message.");
+        }
+
+        const clientFinalNoProof = "c=biws,r=" + parsed.r;
+        const authMessage = clientFirstBare + "," + serverFirst + "," + clientFinalNoProof;
+        const proof = await scramProof(password, parsed.s, Number(parsed.i), authMessage);
+        const finalResponse = await fetch(origin + "/j_security_check/", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/x-niagara-login-support" },
+          body: "action=sendClientFinalMessage&clientFinalMessage=" + clientFinalNoProof + ",p=" + proof
+        });
+        if (!finalResponse.ok) {
+          throw new Error("SCRAM final message failed with HTTP " + finalResponse.status + ".");
+        }
+
+        await fetch(origin + "/j_security_check/", { credentials: "include" });
+        const health = await fetch(origin + "/falls/health", { credentials: "include" });
+        if (!health.ok) {
+          throw new Error("Health check failed after login with HTTP " + health.status + ".");
+        }
+        return health.json();
+      }
+
+      function parseScram(value) {
+        const out = {};
+        for (const part of String(value).split(",")) {
+          const index = part.indexOf("=");
+          if (index > 0) out[part.slice(0, index)] = part.slice(index + 1);
+        }
+        return out;
+      }
+
+      function prepUsername(value) {
+        return String(value).normalize("NFKC").replace(/=/g, "=3D").replace(/,/g, "=2C");
+      }
+
+      function randomBase64(length) {
+        const bytes = new Uint8Array(length);
+        crypto.getRandomValues(bytes);
+        return bytesToBase64(bytes);
+      }
+
+      function bytesToBase64(bytes) {
+        let binary = "";
+        for (const byte of bytes) binary += String.fromCharCode(byte);
+        return btoa(binary);
+      }
+
+      function base64ToBytes(value) {
+        const binary = atob(value);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return bytes;
+      }
+
+      async function hmac(keyBytes, text) {
+        const key = await crypto.subtle.importKey(
+          "raw",
+          keyBytes,
+          { name: "HMAC", hash: "SHA-256" },
+          false,
+          ["sign"]
+        );
+        return new Uint8Array(await crypto.subtle.sign("HMAC", key, te.encode(text)));
+      }
+
+      async function sha256(bytes) {
+        return new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+      }
+
+      async function scramProof(password, saltBase64, iterations, authMessage) {
+        const keyMaterial = await crypto.subtle.importKey(
+          "raw",
+          te.encode(String(password).normalize("NFKC")),
+          "PBKDF2",
+          false,
+          ["deriveBits"]
+        );
+        const salted = new Uint8Array(await crypto.subtle.deriveBits(
+          {
+            name: "PBKDF2",
+            hash: "SHA-256",
+            salt: base64ToBytes(saltBase64),
+            iterations
+          },
+          keyMaterial,
+          256
+        ));
+        const clientKey = await hmac(salted, "Client Key");
+        const storedKey = await sha256(clientKey);
+        const signature = await hmac(storedKey, authMessage);
+        const proof = new Uint8Array(clientKey.length);
+        for (let i = 0; i < clientKey.length; i++) proof[i] = clientKey[i] ^ signature[i];
+        return bytesToBase64(proof);
+      }
+
+      function openSocket(url, transport) {
+        return new Promise((resolve, reject) => {
+          const ws = new WebSocket(url);
+          state.ws = ws;
+          state.transport = transport;
+          ws.binaryType = "arraybuffer";
+          ws.onopen = () => resolve(ws);
+          ws.onerror = () => {
+            setStatus("error", "error");
+            logEvent("WebSocket error");
+            reject(new Error(transport === "proxy"
+              ? "Local proxy is not reachable. Run: node tools/niagarafalls-nav-tree-server.mjs --port=8787"
+              : "WebSocket connection failed."));
+          };
+          ws.onmessage = onSocketMessage;
+          ws.onclose = onSocketClose;
+        });
+      }
+
+      async function onSocketMessage(event) {
+        try {
+          let message;
+          if (state.transport === "proxy") {
+            message = JSON.parse(typeof event.data === "string" ? event.data : await event.data.text());
+          }
+          else {
+            const buffer = event.data instanceof ArrayBuffer ? event.data : await event.data.arrayBuffer();
+            message = msgpack.dec(new Uint8Array(buffer));
+          }
+          if (message.id && state.pending.has(message.id)) {
+            const pending = state.pending.get(message.id);
+            state.pending.delete(message.id);
+            pending.resolve(message);
+            return;
+          }
+          if (message.op === "cov") {
+            handleCov(message);
+            return;
+          }
+          logEvent("Push frame: " + (message.op || "message"));
+        }
+        catch (error) {
+          logEvent("Decode failed: " + (error.message || error));
+        }
+      }
+
+      function onSocketClose(event) {
+        stopKeepalive();
+        markValuesDisconnected();
+        for (const pending of state.pending.values()) pending.resolve({ op: "error", message: "WebSocket closed." });
+        state.pending.clear();
+        els.connect.disabled = false;
+        els.disconnect.disabled = true;
+        els.reload.disabled = true;
+        els.capabilities.disabled = true;
+        els.subStatus.disabled = true;
+        setStatus("disconnected", event.code === 1000 ? "" : "error");
+        logEvent("Closed " + event.code);
+        renderHealth();
+        renderDetails();
+      }
+
+      async function connect() {
+        if (state.ws && state.ws.readyState === WebSocket.OPEN) return;
+        setStatus("connecting", "");
+        els.connect.disabled = true;
+        try {
+          let health = null;
+          if (shouldUseLocalProxy()) {
+            await openSocket(localProxyUrl(), "proxy");
+            const response = await send("connect_station", {
+              stationUrl: stationOrigin(),
+              username: els.username.value.trim(),
+              password: els.password.value
+            });
+            health = response.health || null;
+          }
+          else {
+            health = await loginDirect();
+            await openSocket(directWebSocketUrl(), "direct");
+          }
+          state.health = health;
+          renderHealth();
+          setStatus("connected", "open");
+          els.disconnect.disabled = false;
+          els.reload.disabled = false;
+          els.capabilities.disabled = false;
+          els.subStatus.disabled = false;
+          logEvent(health && health.authenticatedUser ? "Connected as " + health.authenticatedUser : "Connected");
+          await send("ping");
+          await loadCapabilities(false);
+          startKeepalive();
+          await browseRoot();
+        }
+        catch (error) {
+          stopKeepalive();
+          els.connect.disabled = false;
+          els.disconnect.disabled = true;
+          els.reload.disabled = true;
+          els.capabilities.disabled = true;
+          els.subStatus.disabled = true;
+          setStatus("error", "error");
+          logEvent(error.message || String(error));
+          if (state.ws) state.ws.close(1000, "connect failed");
+        }
+      }
+
+      function disconnect() {
+        unsubscribeTrackedPoint();
+        stopKeepalive();
+        if (state.ws) state.ws.close(1000, "client disconnect");
+      }
+
+      els.guideTab.addEventListener("click", () => setActiveView("guide"));
+      els.testTab.addEventListener("click", () => setActiveView("test"));
+      els.connect.addEventListener("click", connect);
+      els.disconnect.addEventListener("click", disconnect);
+      els.reload.addEventListener("click", browseRoot);
+      els.capabilities.addEventListener("click", () => loadCapabilities(true));
+      els.subStatus.addEventListener("click", () => refreshSubscriptionStatus(true));
+
+      document.querySelectorAll("[data-action='preset-root']").forEach((button) => {
+        button.addEventListener("click", async () => {
+          els.rootOrd.value = button.getAttribute("data-root") || "slot:/Drivers";
+          if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            await browseRoot();
+          }
+          else {
+            logEvent("Root set to " + els.rootOrd.value);
+          }
+        });
+      });
+
+      document.querySelectorAll("[data-action='load-current-root']").forEach((button) => {
+        button.addEventListener("click", async () => {
+          if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            await browseRoot();
+          }
+          else {
+            logEvent("Connect first, then this loads the typed Root ORD.");
+          }
+        });
+      });
+
+      els.details.addEventListener("click", (event) => {
+        const target = event.target.closest("[data-action='read-value']");
+        if (!target) return;
+        const pointOrd = target.getAttribute("data-point");
+        readPointValue(pointOrd);
+      });
+
+      els.tree.addEventListener("click", (event) => {
+        const target = event.target.closest("[data-ord]");
+        if (!target) return;
+        const ord = target.getAttribute("data-ord");
+        if (target.dataset.action === "toggle") {
+          event.stopPropagation();
+          expandNode(ord);
+          return;
+        }
+        selectNode(ord);
+      });
+
+      els.tree.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        const target = event.target.closest("[data-ord]");
+        if (!target) return;
+        event.preventDefault();
+        const ord = target.getAttribute("data-ord");
+        if (event.shiftKey) expandNode(ord);
+        else selectNode(ord);
+      });
+
+      renderTree();
+      renderDetails();
+      renderHealth();
+      setActiveView("guide");
+      if (location.protocol === "file:") {
+        logEvent("File mode will use local proxy ws://127.0.0.1:8787/app-ws");
+      }
+    })();
+  </script>
+</body>
+</html>

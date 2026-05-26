@@ -1,0 +1,7 @@
+._*
+.DS_Store
+.claude/
+.gradle/
+build/
+**/build/
+output/

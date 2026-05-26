@@ -1,0 +1,6 @@
+<!-- Module Include File -->
+<!-- Types -->
+<types>
+  <!--com.basidekick.niagarafalls-->
+  <type class="com.basidekick.niagarafalls.BNiagaraFallsService" name="NiagaraFallsService"/>
+</types>

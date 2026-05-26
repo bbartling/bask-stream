@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>NiagaraFalls Test Harness</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 24px; background: #f7f7f8; color: #111; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .sub { color: #555; margin: 0 0 20px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 16px; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    label { display: block; font-weight: 600; margin: 0 0 6px; }
+    input, select { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #ccc; border-radius: 8px; margin: 0 0 12px; background: #fff; }
+    button { padding: 10px 12px; border: 1px solid #bbb; border-radius: 8px; background: #fff; cursor: pointer; margin: 0 8px 8px 0; }
+    button.primary { background: #111; color: #fff; border-color: #111; }
+    pre { background: #111; color: #f3f3f3; padding: 16px; border-radius: 12px; overflow: auto; min-height: 320px; white-space: pre-wrap; word-break: break-word; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    .status { font-weight: 700; }
+    code { background: #eee; padding: 2px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>NiagaraFalls Test Harness</h1>
+  <p class="sub">This standalone file runs from <code>file://</code> and may not reuse the authenticated Niagara browser context correctly. Use <code>niagarafalls-test-snippet.js</code> inside the logged-in <code>https://localhost</code> page instead.</p>
+
+  <div class="grid">
+    <div class="card">
+      <div class="row">
+        <button id="connect" class="primary">Connect</button>
+        <button id="disconnect">Disconnect</button>
+        <button id="keepalive">Keepalive Off</button>
+      </div>
+      <div class="status">Status: <span id="status">disconnected</span></div>
+
+      <label for="wsUrl">WebSocket URL</label>
+      <input id="wsUrl" value="wss://localhost/falls">
+
+      <label for="base">Browse Base</label>
+      <input id="base" value="slot:/Drivers">
+
+      <label for="depth">Browse Depth</label>
+      <input id="depth" type="number" value="1" min="0" max="4">
+
+      <label for="point">Point / Source ORD</label>
+      <input id="point" value="slot:/Drivers/LonNetwork/Floor1/AHU_01/points/TestPoint">
+
+      <label for="writeValue">Write Value</label>
+      <input id="writeValue" value="">
+
+      <label for="writeAction">Write Action</label>
+      <select id="writeAction">
+        <option value="set">set</option>
+        <option value="override">override</option>
+        <option value="auto">auto</option>
+        <option value="emergency_override">emergency_override</option>
+        <option value="emergency_auto">emergency_auto</option>
+      </select>
+
+      <label for="writeDuration">Override Duration Seconds</label>
+      <input id="writeDuration" type="number" value="" min="0">
+
+      <label for="hours">History Hours</label>
+      <input id="hours" type="number" value="24" min="1">
+
+      <label for="limit">Limit</label>
+      <input id="limit" type="number" value="500" min="1" max="5000">
+
+      <label for="alarmScope">Alarm Scope</label>
+      <select id="alarmScope">
+        <option value="open">open</option>
+        <option value="ack_pending">ack_pending</option>
+        <option value="all">all</option>
+      </select>
+
+      <label for="alarmMode">Alarm Push Mode</label>
+      <select id="alarmMode">
+        <option value="event">event</option>
+        <option value="snapshot">snapshot</option>
+        <option value="both">both</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <button id="ping">Ping</button>
+        <button id="browse">Browse</button>
+        <button id="describe">Describe</button>
+        <button id="read">Read</button>
+        <button id="write">Write</button>
+        <button id="subscribe">Subscribe</button>
+        <button id="unsubscribe">Unsubscribe</button>
+        <button id="history">Read History</button>
+        <button id="alarms">Read Alarms</button>
+        <button id="subscribeAlarms">Subscribe Alarms</button>
+        <button id="unsubscribeAlarms">Unsub Alarms</button>
+        <button id="schedule">Read Schedule</button>
+      </div>
+      <pre id="log"></pre>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const logEl = document.getElementById('log');
+      const statusEl = document.getElementById('status');
+      const state = { ws: null, seq: 0, keepalive: null };
+      const qs = (id) => document.getElementById(id);
+      const log = (v) => {
+        const line = typeof v === 'string' ? v : JSON.stringify(v, null, 2);
+        logEl.textContent += line + '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+      };
+
+      const te = new TextEncoder();
+      const td = new TextDecoder();
+
+      const mp = {
+        enc(v) {
+          const join = (parts) => {
+            const len = parts.reduce((n, p) => n + p.length, 0);
+            const out = new Uint8Array(len);
+            let off = 0;
+            for (const p of parts) {
+              out.set(p, off);
+              off += p.length;
+            }
+            return out;
+          };
+          const u8 = (...n) => Uint8Array.from(n);
+          const encStr = (s) => {
+            const b = te.encode(s);
+            if (b.length <= 31) return join([u8(0xa0 | b.length), b]);
+            if (b.length <= 255) return join([u8(0xd9, b.length), b]);
+            return join([u8(0xda, (b.length >> 8) & 0xff, b.length & 0xff), b]);
+          };
+          const encInt = (n) => {
+            if (n >= 0 && n <= 0x7f) return u8(n);
+            if (n >= -32 && n < 0) return u8(0x100 + n);
+            if (n >= -128 && n <= 127) return u8(0xd0, n & 0xff);
+            if (n >= -32768 && n <= 32767) return u8(0xd1, (n >> 8) & 0xff, n & 0xff);
+            if (n >= -2147483648 && n <= 2147483647) {
+              return u8(0xd2, (n >> 24) & 0xff, (n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff);
+            }
+            const b = new ArrayBuffer(9);
+            const dv = new DataView(b);
+            if (n >= 0) {
+              dv.setUint8(0, 0xcf);
+              dv.setBigUint64(1, BigInt(n));
+            } else {
+              dv.setUint8(0, 0xd3);
+              dv.setBigInt64(1, BigInt(n));
+            }
+            return new Uint8Array(b);
+          };
+          if (v == null) return u8(0xc0);
+          if (typeof v === 'string') return encStr(v);
+          if (typeof v === 'boolean') return u8(v ? 0xc3 : 0xc2);
+          if (typeof v === 'number') {
+            if (Number.isInteger(v)) return encInt(v);
+            const b = new ArrayBuffer(9);
+            const dv = new DataView(b);
+            dv.setUint8(0, 0xcb);
+            dv.setFloat64(1, v);
+            return new Uint8Array(b);
+          }
+          if (Array.isArray(v)) return join([u8(0x90 | v.length), ...v.map(mp.enc)]);
+          if (typeof v === 'object') {
+            const entries = Object.entries(v);
+            const body = [];
+            for (const [k, val] of entries) body.push(encStr(k), mp.enc(val));
+            return join([u8(0x80 | entries.length), ...body]);
+          }
+          throw new Error('unsupported');
+        },
+        dec(bytes) {
+          const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+          let i = 0;
+          const take = (n) => {
+            const start = i;
+            i += n;
+            return new Uint8Array(bytes.buffer, bytes.byteOffset + start, n);
+          };
+          const read = () => {
+            const t = dv.getUint8(i++);
+            if (t <= 0x7f) return t;
+            if (t >= 0xe0) return t - 256;
+            if ((t & 0xe0) === 0xa0) return td.decode(take(t & 0x1f));
+            if ((t & 0xf0) === 0x90) return Array.from({ length: t & 0x0f }, () => read());
+            if ((t & 0xf0) === 0x80) {
+              const out = {};
+              for (let j = 0; j < (t & 0x0f); j++) out[read()] = read();
+              return out;
+            }
+            switch (t) {
+              case 0xc0: return null;
+              case 0xc2: return false;
+              case 0xc3: return true;
+              case 0xcb: { const v = dv.getFloat64(i); i += 8; return v; }
+              case 0xcc: return dv.getUint8(i++);
+              case 0xcd: { const v = dv.getUint16(i); i += 2; return v; }
+              case 0xce: { const v = dv.getUint32(i); i += 4; return v; }
+              case 0xcf: { const v = Number(dv.getBigUint64(i)); i += 8; return v; }
+              case 0xd0: return dv.getInt8(i++);
+              case 0xd1: { const v = dv.getInt16(i); i += 2; return v; }
+              case 0xd2: { const v = dv.getInt32(i); i += 4; return v; }
+              case 0xd3: { const v = Number(dv.getBigInt64(i)); i += 8; return v; }
+              case 0xd9: { const len = dv.getUint8(i++); return td.decode(take(len)); }
+              case 0xda: { const len = dv.getUint16(i); i += 2; return td.decode(take(len)); }
+              case 0xdc: { const len = dv.getUint16(i); i += 2; return Array.from({ length: len }, () => read()); }
+              case 0xde: {
+                const len = dv.getUint16(i); i += 2;
+                const out = {};
+                for (let j = 0; j < len; j++) out[read()] = read();
+                return out;
+              }
+              default: throw new Error('unsupported msgpack byte 0x' + t.toString(16));
+            }
+          };
+          return read();
+        }
+      };
+
+      const nextId = () => String(++state.seq);
+      const send = (obj) => {
+        if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+          log('socket not open');
+          return;
+        }
+        state.ws.send(mp.enc(obj));
+      };
+
+      const connect = () => {
+        if (state.ws && state.ws.readyState === WebSocket.OPEN) return;
+        state.ws = new WebSocket(qs('wsUrl').value);
+        state.ws.binaryType = 'arraybuffer';
+        statusEl.textContent = 'connecting';
+        state.ws.onopen = () => {
+          statusEl.textContent = 'open';
+          log('open');
+          send({ op: 'ping', id: nextId() });
+        };
+        state.ws.onmessage = async (e) => {
+          const bytes = e.data instanceof ArrayBuffer ? new Uint8Array(e.data) : new Uint8Array(await e.data.arrayBuffer());
+          log({ message: mp.dec(bytes) });
+        };
+        state.ws.onerror = (e) => log({ wsError: String(e.type || 'error') });
+        state.ws.onclose = (e) => {
+          statusEl.textContent = 'closed';
+          log({ closed: e.code, reason: e.reason });
+        };
+      };
+
+      const disconnect = () => {
+        if (state.ws) state.ws.close(1000, 'client close');
+      };
+
+      const toggleKeepalive = () => {
+        if (state.keepalive) {
+          clearInterval(state.keepalive);
+          state.keepalive = null;
+          qs('keepalive').textContent = 'Keepalive Off';
+          return;
+        }
+        state.keepalive = setInterval(() => {
+          if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            send({ op: 'ping', id: nextId() });
+          }
+        }, 20000);
+        qs('keepalive').textContent = 'Keepalive On';
+      };
+
+      qs('connect').onclick = connect;
+      qs('disconnect').onclick = disconnect;
+      qs('keepalive').onclick = toggleKeepalive;
+      qs('ping').onclick = () => send({ op: 'ping', id: nextId() });
+      qs('browse').onclick = () => send({ op: 'browse', id: nextId(), base: qs('base').value, depth: Number(qs('depth').value || 1) });
+      qs('describe').onclick = () => send({ op: 'describe', id: nextId(), ord: qs('point').value });
+      qs('read').onclick = () => send({ op: 'read', id: nextId(), points: [qs('point').value] });
+      qs('write').onclick = () => {
+        const message = { op: 'write', id: nextId(), point: qs('point').value, action: qs('writeAction').value };
+        if (qs('writeValue').value !== '') message.value = qs('writeValue').value;
+        if (qs('writeDuration').value !== '') message.durationSec = Number(qs('writeDuration').value);
+        send(message);
+      };
+      qs('subscribe').onclick = () => send({ op: 'subscribe', id: nextId(), points: [qs('point').value] });
+      qs('unsubscribe').onclick = () => send({ op: 'unsubscribe', id: nextId(), points: [qs('point').value] });
+      qs('history').onclick = () => {
+        const end = Date.now();
+        const hours = Number(qs('hours').value || 24);
+        send({ op: 'read_history', id: nextId(), ord: qs('point').value, start: end - (hours * 60 * 60 * 1000), end, limit: Number(qs('limit').value || 500) });
+      };
+      qs('alarms').onclick = () => send({ op: 'read_alarms', id: nextId(), source: qs('point').value || null, scope: qs('alarmScope').value, limit: Number(qs('limit').value || 500) });
+      qs('subscribeAlarms').onclick = () => send({ op: 'subscribe_alarms', id: nextId(), source: qs('point').value || null, scope: qs('alarmScope').value, mode: qs('alarmMode').value, limit: Number(qs('limit').value || 500) });
+      qs('unsubscribeAlarms').onclick = () => send({ op: 'unsubscribe_alarms', source: qs('point').value || null, scope: qs('alarmScope').value, mode: qs('alarmMode').value, limit: Number(qs('limit').value || 500) });
+      qs('schedule').onclick = () => send({ op: 'read_schedule', id: nextId(), ord: qs('point').value, at: Date.now() });
+    })();
+  </script>
+</body>
+</html>
