@@ -1,4 +1,4 @@
-package com.basidekick.niagarafalls;
+package com.basidekick.baskstream;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -28,27 +28,29 @@ import javax.baja.sys.Context;
 import javax.baja.sys.Subscriber;
 import javax.baja.user.BUser;
 
-final class FallsClientSession
+final class BaskStreamClientSession
 {
   private static final int MAX_GROUP_NAME_LENGTH = 128;
   private static final int MAX_LEASE_SEC = 86400;
+  private static final int MAX_POINTS_PER_REQUEST = 1000;
+  private static final int MAX_MODEL_BASES_PER_REQUEST = 100;
 
-  private final FallsWebSocketRuntime runtime;
-  private final FallsJettyWebSocketConnection connection;
+  private final BaskStreamWebSocketRuntime runtime;
+  private final BaskStreamJettyWebSocketConnection connection;
   private final BUser user;
   private final Context context;
   private final String sessionId;
   private final Subscriber subscriber;
   private final Subscriber alarmSubscriber;
   private final Subscriber modelSubscriber;
-  private final Map<String, FallsPointResolver.ResolvedPoint> subscriptions =
-      new ConcurrentHashMap<String, FallsPointResolver.ResolvedPoint>();
+  private final Map<String, BaskStreamPointResolver.ResolvedPoint> subscriptions =
+      new ConcurrentHashMap<String, BaskStreamPointResolver.ResolvedPoint>();
   private final Set<String> directSubscriptions =
       Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
   private final Map<String, SubscriptionGroup> subscriptionGroups =
       new ConcurrentHashMap<String, SubscriptionGroup>();
-  private final Map<String, FallsAlarmResolver.AlarmSubscriptionSpec> alarmSubscriptions =
-      new ConcurrentHashMap<String, FallsAlarmResolver.AlarmSubscriptionSpec>();
+  private final Map<String, BaskStreamAlarmResolver.AlarmSubscriptionSpec> alarmSubscriptions =
+      new ConcurrentHashMap<String, BaskStreamAlarmResolver.AlarmSubscriptionSpec>();
   private final Map<String, BComponent> modelSubscriptions =
       new ConcurrentHashMap<String, BComponent>();
   private final AtomicBoolean closed = new AtomicBoolean(false);
@@ -62,7 +64,7 @@ final class FallsClientSession
   private ScheduledFuture<?> covFlushFuture;
   private ScheduledFuture<?> leaseSweepFuture;
 
-  FallsClientSession(FallsWebSocketRuntime runtime, FallsJettyWebSocketConnection connection, BUser user, Context context)
+  BaskStreamClientSession(BaskStreamWebSocketRuntime runtime, BaskStreamJettyWebSocketConnection connection, BUser user, Context context)
   {
     this.runtime = runtime;
     this.connection = connection;
@@ -198,6 +200,14 @@ final class FallsClientSession
       {
         handleReadAlarms(id, request);
       }
+      else if ("ack_alarm".equals(op) || "ack_alarms".equals(op))
+      {
+        handleAckAlarms(id, request);
+      }
+      else if ("clear_alarm".equals(op) || "clear_alarms".equals(op))
+      {
+        handleClearAlarms(id, request);
+      }
       else if ("subscribe_alarms".equals(op))
       {
         handleSubscribeAlarms(id, request);
@@ -223,13 +233,13 @@ final class FallsClientSession
         sendError(id, "unsupported_op", "Unsupported operation: " + op);
       }
     }
-    catch (FallsProtocolException e)
+    catch (BaskStreamProtocolException e)
     {
       sendError(id, e.getCode(), e.getMessage());
     }
     catch (Exception e)
     {
-      runtime.getService().LOG.log(Level.WARNING, "NiagaraFalls request handling failed for session " + sessionId, e);
+      runtime.getService().LOG.log(Level.WARNING, "baskStream request handling failed for session " + sessionId, e);
       sendError(id, "internal_error", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
     }
   }
@@ -241,7 +251,7 @@ final class FallsClientSession
       return;
     }
 
-    for (FallsPointResolver.ResolvedPoint point : subscriptions.values().toArray(new FallsPointResolver.ResolvedPoint[0]))
+    for (BaskStreamPointResolver.ResolvedPoint point : subscriptions.values().toArray(new BaskStreamPointResolver.ResolvedPoint[0]))
     {
       removeActualSubscription(point.getPointOrd());
     }
@@ -265,14 +275,14 @@ final class FallsClientSession
     alarmSubscriber.unsubscribeAll();
     modelSubscriber.unsubscribeAll();
     runtime.onClose(this);
-    runtime.getService().logFine("Closed NiagaraFalls session " + sessionId + " for user " + user.getUsername() + ": " + reason);
+    runtime.getService().logFine("Closed baskStream session " + sessionId + " for user " + user.getUsername() + ": " + reason);
   }
 
   private void handleCapabilities(String id)
   {
     Map<String, Object> capabilities = new LinkedHashMap<String, Object>();
     capabilities.put("apiVersion", "1.2");
-    capabilities.put("module", "NiagaraFalls");
+    capabilities.put("module", "baskStream");
     capabilities.put("transport", "websocket-msgpack");
     capabilities.put("serverTime", Long.valueOf(Clock.millis()));
     capabilities.put("authenticatedUser", user.getUsername());
@@ -294,6 +304,10 @@ final class FallsClientSession
         "read_history",
         "describe_history",
         "read_alarms",
+        "ack_alarm",
+        "ack_alarms",
+        "clear_alarm",
+        "clear_alarms",
         "subscribe_alarms",
         "unsubscribe_alarms",
         "read_schedule",
@@ -309,8 +323,16 @@ final class FallsClientSession
     limits.put("subscriptionLeaseSec", Long.valueOf(runtime.getService().getSubscriptionLeaseSecValue()));
     limits.put("maxSubscriptionLeaseSec", Long.valueOf(MAX_LEASE_SEC));
     limits.put("covBatchWindowMillis", Long.valueOf(runtime.getService().getCovBatchWindowMillisValue()));
-    limits.put("defaultBrowseDepth", Long.valueOf(FallsBrowseResolver.DEFAULT_DEPTH));
-    limits.put("maxBrowseDepth", Long.valueOf(FallsBrowseResolver.MAX_DEPTH));
+    limits.put("defaultBrowseDepth", Long.valueOf(BaskStreamBrowseResolver.DEFAULT_DEPTH));
+    limits.put("maxBrowseDepth", Long.valueOf(BaskStreamBrowseResolver.MAX_DEPTH));
+    limits.put("defaultSearchDepth", Long.valueOf(BaskStreamBrowseResolver.DEFAULT_SEARCH_DEPTH));
+    limits.put("maxSearchDepth", Long.valueOf(BaskStreamBrowseResolver.MAX_SEARCH_DEPTH));
+    limits.put("defaultSearchLimit", Long.valueOf(BaskStreamBrowseResolver.DEFAULT_SEARCH_LIMIT));
+    limits.put("maxSearchLimit", Long.valueOf(BaskStreamBrowseResolver.MAX_SEARCH_LIMIT));
+    limits.put("defaultSearchMaxVisited", Long.valueOf(BaskStreamBrowseResolver.DEFAULT_SEARCH_MAX_VISITED));
+    limits.put("maxSearchMaxVisited", Long.valueOf(BaskStreamBrowseResolver.MAX_SEARCH_MAX_VISITED));
+    limits.put("defaultSearchTimeoutMillis", Long.valueOf(BaskStreamBrowseResolver.DEFAULT_SEARCH_TIMEOUT_MILLIS));
+    limits.put("maxSearchTimeoutMillis", Long.valueOf(BaskStreamBrowseResolver.MAX_SEARCH_TIMEOUT_MILLIS));
     capabilities.put("limits", limits);
 
     Map<String, Object> session = new LinkedHashMap<String, Object>();
@@ -345,6 +367,7 @@ final class FallsClientSession
 
     Map<String, Object> policy = new LinkedHashMap<String, Object>();
     policy.put("allowedPathPatterns", runtime.getService().getAllowedPathPatterns());
+    policy.put("allowedOrigins", runtime.getService().getAllowedOrigins());
     policy.put("slotBrowseOnly", Boolean.TRUE);
     policy.put("historyOrdReads", Boolean.TRUE);
     capabilities.put("policy", policy);
@@ -354,9 +377,10 @@ final class FallsClientSession
     send(response);
   }
 
-  private void handleRead(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleRead(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     List<String> points = runtime.getCodec().requireStringList(request, "points");
+    requireMaxSize(points, "points", MAX_POINTS_PER_REQUEST);
     List<Object> results = new ArrayList<Object>(points.size());
     for (String pointOrd : points)
     {
@@ -368,16 +392,17 @@ final class FallsClientSession
     send(response);
   }
 
-  private void handleWrite(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleWrite(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     Map<String, Object> response = baseMessage("write_result", id);
     response.put("points", runtime.getWriteResolver().write(request, context));
     send(response);
   }
 
-  private void handleSubscribe(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleSubscribe(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     List<String> points = runtime.getCodec().requireStringList(request, "points");
+    requireMaxSize(points, "points", MAX_POINTS_PER_REQUEST);
     List<Object> results = new ArrayList<Object>(points.size());
 
     synchronized (subscriptionLock)
@@ -386,11 +411,11 @@ final class FallsClientSession
       {
         try
         {
-          FallsPointResolver.ResolvedPoint resolved = ensurePointSubscription(pointOrd);
+          BaskStreamPointResolver.ResolvedPoint resolved = ensurePointSubscription(pointOrd);
           directSubscriptions.add(pointOrd);
           results.add(runtime.getResolver().snapshot(resolved, context).toWire());
         }
-        catch (FallsProtocolException e)
+        catch (BaskStreamProtocolException e)
         {
           results.add(errorEntry(pointOrd, e.getCode(), e.getMessage()));
         }
@@ -404,7 +429,7 @@ final class FallsClientSession
     send(response);
   }
 
-  private void handleUnsubscribe(Map<String, Object> request) throws FallsProtocolException
+  private void handleUnsubscribe(Map<String, Object> request) throws BaskStreamProtocolException
   {
     List<String> points = runtime.getCodec().requireStringList(request, "points");
     synchronized (subscriptionLock)
@@ -418,10 +443,11 @@ final class FallsClientSession
     runtime.onSubscriptionCountChanged();
   }
 
-  private void handleReplaceSubscriptions(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleReplaceSubscriptions(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     String groupName = normalizeGroupName(runtime.getCodec().optionalString(request, "group"));
     List<String> requested = runtime.getCodec().requireStringList(request, "points");
+    requireMaxSize(requested, "points", MAX_POINTS_PER_REQUEST);
     LinkedHashSet<String> desired = new LinkedHashSet<String>(requested);
     List<Object> results = new ArrayList<Object>(desired.size());
     long now = Clock.millis();
@@ -440,7 +466,7 @@ final class FallsClientSession
       {
         try
         {
-          FallsPointResolver.ResolvedPoint resolved = ensurePointSubscription(pointOrd);
+          BaskStreamPointResolver.ResolvedPoint resolved = ensurePointSubscription(pointOrd);
           newPoints.add(pointOrd);
           if (!oldPoints.contains(pointOrd))
           {
@@ -448,7 +474,7 @@ final class FallsClientSession
           }
           results.add(runtime.getResolver().snapshot(resolved, context).toWire());
         }
-        catch (FallsProtocolException e)
+        catch (BaskStreamProtocolException e)
         {
           results.add(errorEntry(pointOrd, e.getCode(), e.getMessage()));
         }
@@ -494,7 +520,7 @@ final class FallsClientSession
     send(response);
   }
 
-  private void handleRenewSubscriptions(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleRenewSubscriptions(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     String groupName = normalizeGroupName(runtime.getCodec().optionalString(request, "group"));
     long now = Clock.millis();
@@ -506,7 +532,7 @@ final class FallsClientSession
       group = subscriptionGroups.get(groupName);
       if (group == null)
       {
-        throw new FallsProtocolException("group_not_found", "Subscription group not found: " + groupName);
+        throw new BaskStreamProtocolException("group_not_found", "Subscription group not found: " + groupName);
       }
       group.updatedAt = now;
       group.leaseSec = leaseSec;
@@ -522,7 +548,7 @@ final class FallsClientSession
     send(response);
   }
 
-  private void handleReleaseSubscriptions(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleReleaseSubscriptions(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     String groupName = normalizeGroupName(runtime.getCodec().optionalString(request, "group"));
     int removed = 0;
@@ -531,7 +557,7 @@ final class FallsClientSession
       SubscriptionGroup group = subscriptionGroups.remove(groupName);
       if (group == null)
       {
-        throw new FallsProtocolException("group_not_found", "Subscription group not found: " + groupName);
+        throw new BaskStreamProtocolException("group_not_found", "Subscription group not found: " + groupName);
       }
       removed = group.points.size();
       for (String pointOrd : group.points)
@@ -550,7 +576,7 @@ final class FallsClientSession
     send(response);
   }
 
-  private void handleSubscriptionStatus(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleSubscriptionStatus(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     Boolean includePoints = optionalBoolean(request, "includePoints");
     sweepExpiredSubscriptionGroups();
@@ -579,13 +605,13 @@ final class FallsClientSession
     send(response);
   }
 
-  private void handleBrowse(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleBrowse(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     String baseOrd = runtime.getCodec().optionalString(request, "base");
     int depth = runtime.getBrowseResolver().normalizeDepth(request.get("depth"));
     String metadataMode = runtime.getBrowseResolver().normalizeMetadataMode(
         metadataRequestValue(request),
-        FallsBrowseResolver.METADATA_NONE);
+        BaskStreamBrowseResolver.METADATA_NONE);
 
     Map<String, Object> response = baseMessage("browse_result", id);
     response.put("depth", Long.valueOf(depth));
@@ -594,7 +620,7 @@ final class FallsClientSession
     send(response);
   }
 
-  private void handleDescribe(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleDescribe(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     String ord = runtime.getCodec().optionalString(request, "ord");
     if (ord == null || ord.trim().length() == 0)
@@ -605,23 +631,23 @@ final class FallsClientSession
     Map<String, Object> response = baseMessage("describe_result", id);
     String metadataMode = runtime.getBrowseResolver().normalizeMetadataMode(
         metadataRequestValue(request),
-        FallsBrowseResolver.METADATA_FULL);
+        BaskStreamBrowseResolver.METADATA_FULL);
     response.put("metadata", metadataMode);
     response.put("node", runtime.getBrowseResolver().describe(ord, metadataMode, context));
     send(response);
   }
 
-  private void handleSearch(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleSearch(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     String baseOrd = runtime.getCodec().optionalString(request, "base");
-    int depth = runtime.getBrowseResolver().normalizeDepth(request.get("depth"));
+    Object searchDepth = request.containsKey("maxDepth") ? request.get("maxDepth") : request.get("depth");
     String metadataMode = runtime.getBrowseResolver().normalizeMetadataMode(
         metadataRequestValue(request),
-        FallsBrowseResolver.METADATA_NONE);
+        BaskStreamBrowseResolver.METADATA_NONE);
     Map<String, Object> response = baseMessage("search_result", id);
     response.put("result", runtime.getBrowseResolver().search(
         baseOrd,
-        depth,
+        searchDepth,
         metadataMode,
         runtime.getCodec().optionalString(request, "query"),
         runtime.getCodec().optionalString(request, "kind"),
@@ -629,11 +655,13 @@ final class FallsClientSession
         optionalStringList(request, "operations"),
         optionalBoolean(request, "writable"),
         request.get("limit"),
+        request.get("maxVisited"),
+        request.get("timeoutMillis"),
         context));
     send(response);
   }
 
-  private void handleDescribeWrite(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleDescribeWrite(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     Map<String, Object> response = baseMessage("write_description", id);
     response.put("points", runtime.getWriteResolver().describe(request, context));
@@ -649,7 +677,7 @@ final class FallsClientSession
     return request.get("includeMetadata");
   }
 
-  private void handleReadHistory(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleReadHistory(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     String ord = runtime.getCodec().optionalString(request, "ord");
     Map<String, Object> response = baseMessage("history_result", id);
@@ -662,7 +690,7 @@ final class FallsClientSession
     send(response);
   }
 
-  private void handleDescribeHistory(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleDescribeHistory(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     String ord = runtime.getCodec().optionalString(request, "ord");
     if (ord == null || ord.trim().length() == 0)
@@ -675,7 +703,7 @@ final class FallsClientSession
     send(response);
   }
 
-  private void handleReadAlarms(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleReadAlarms(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     String source = runtime.getCodec().optionalString(request, "source");
     String scope = runtime.getCodec().optionalString(request, "scope");
@@ -685,9 +713,30 @@ final class FallsClientSession
     send(response);
   }
 
-  private void handleSubscribeAlarms(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleAckAlarms(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
-    FallsAlarmResolver.AlarmSubscriptionSpec spec = runtime.getAlarmResolver().normalizeSubscription(
+    String source = runtime.getCodec().optionalString(request, "source");
+    Map<String, Object> response = baseMessage("alarm_action_result", id);
+    response.put("alarms", runtime.getAlarmResolver().acknowledgeAlarms(alarmUuidValue(request), source, context, user.getUsername()));
+    send(response);
+  }
+
+  private void handleClearAlarms(String id, Map<String, Object> request) throws BaskStreamProtocolException
+  {
+    String source = runtime.getCodec().optionalString(request, "source");
+    Map<String, Object> response = baseMessage("alarm_action_result", id);
+    response.put("alarms", runtime.getAlarmResolver().clearAlarms(alarmUuidValue(request), source, context, user.getUsername()));
+    send(response);
+  }
+
+  private Object alarmUuidValue(Map<String, Object> request)
+  {
+    return request.containsKey("uuids") ? request.get("uuids") : request.get("uuid");
+  }
+
+  private void handleSubscribeAlarms(String id, Map<String, Object> request) throws BaskStreamProtocolException
+  {
+    BaskStreamAlarmResolver.AlarmSubscriptionSpec spec = runtime.getAlarmResolver().normalizeSubscription(
         runtime.getCodec().optionalString(request, "source"),
         runtime.getCodec().optionalString(request, "scope"),
         request.get("limit"),
@@ -696,8 +745,9 @@ final class FallsClientSession
     if (!alarmSubscriptions.containsKey(spec.key())
         && getSubscriptionCount() >= runtime.getService().getMaxSubscriptionsPerClientValue())
     {
-      throw new FallsProtocolException("subscription_limit", "maxSubscriptionsPerClient exceeded.");
+      throw new BaskStreamProtocolException("subscription_limit", "maxSubscriptionsPerClient exceeded.");
     }
+    runtime.getAlarmResolver().requireAllowed(spec);
     ensureAlarmServiceSubscribed();
     alarmSubscriptions.put(spec.key(), spec);
     runtime.onSubscriptionCountChanged();
@@ -708,7 +758,7 @@ final class FallsClientSession
     send(response);
   }
 
-  private void handleUnsubscribeAlarms(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleUnsubscribeAlarms(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     boolean hasFilter = request.containsKey("source") || request.containsKey("scope") || request.containsKey("limit") || request.containsKey("mode");
     if (!hasFilter)
@@ -721,7 +771,7 @@ final class FallsClientSession
     }
 
     String mode = runtime.getCodec().optionalString(request, "mode");
-    FallsAlarmResolver.AlarmSubscriptionSpec spec = runtime.getAlarmResolver().normalizeSubscription(
+    BaskStreamAlarmResolver.AlarmSubscriptionSpec spec = runtime.getAlarmResolver().normalizeSubscription(
         runtime.getCodec().optionalString(request, "source"),
         runtime.getCodec().optionalString(request, "scope"),
         request.get("limit"),
@@ -753,10 +803,10 @@ final class FallsClientSession
     send(response);
   }
 
-  private void removeAlarmSubscriptions(FallsAlarmResolver.AlarmSubscriptionSpec spec)
+  private void removeAlarmSubscriptions(BaskStreamAlarmResolver.AlarmSubscriptionSpec spec)
   {
-    for (FallsAlarmResolver.AlarmSubscriptionSpec existing :
-        alarmSubscriptions.values().toArray(new FallsAlarmResolver.AlarmSubscriptionSpec[0]))
+    for (BaskStreamAlarmResolver.AlarmSubscriptionSpec existing :
+        alarmSubscriptions.values().toArray(new BaskStreamAlarmResolver.AlarmSubscriptionSpec[0]))
     {
       if (sameAlarmFilter(existing, spec))
       {
@@ -765,7 +815,7 @@ final class FallsClientSession
     }
   }
 
-  private boolean sameAlarmFilter(FallsAlarmResolver.AlarmSubscriptionSpec left, FallsAlarmResolver.AlarmSubscriptionSpec right)
+  private boolean sameAlarmFilter(BaskStreamAlarmResolver.AlarmSubscriptionSpec left, BaskStreamAlarmResolver.AlarmSubscriptionSpec right)
   {
     if (left.limit != right.limit || !left.scope.equals(right.scope))
     {
@@ -778,7 +828,7 @@ final class FallsClientSession
     return left.source.equals(right.source);
   }
 
-  private void handleSubscribeModel(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleSubscribeModel(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     List<String> bases = modelBaseOrds(request);
     int depth = runtime.getBrowseResolver().normalizeDepth(request.get("depth"));
@@ -802,7 +852,7 @@ final class FallsClientSession
     send(response);
   }
 
-  private void handleUnsubscribeModel(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleUnsubscribeModel(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     if (!request.containsKey("base") && !request.containsKey("bases"))
     {
@@ -826,11 +876,12 @@ final class FallsClientSession
     }
   }
 
-  private List<String> modelBaseOrds(Map<String, Object> request) throws FallsProtocolException
+  private List<String> modelBaseOrds(Map<String, Object> request) throws BaskStreamProtocolException
   {
     List<String> bases = optionalStringList(request, "bases");
     if (bases != null && !bases.isEmpty())
     {
+      requireMaxSize(bases, "bases", MAX_MODEL_BASES_PER_REQUEST);
       return bases;
     }
     String base = runtime.getCodec().optionalString(request, "base");
@@ -843,46 +894,58 @@ final class FallsClientSession
     return single;
   }
 
-  private BComponent resolveModelComponent(String ord) throws FallsProtocolException
+  private void requireMaxSize(List<?> values, String key, int max) throws BaskStreamProtocolException
+  {
+    if (values != null && values.size() > max)
+    {
+      throw new BaskStreamProtocolException("bad_request", "Field '" + key + "' cannot contain more than " + max + " entries.");
+    }
+  }
+
+  private BComponent resolveModelComponent(String ord) throws BaskStreamProtocolException
   {
     if (ord == null || !ord.startsWith("slot:/"))
     {
-      throw new FallsProtocolException("invalid_point", "Model subscriptions support slot:/ ORDs only.");
+      throw new BaskStreamProtocolException("invalid_point", "Model subscriptions support slot:/ ORDs only.");
     }
     if (!runtime.getBrowseResolver().isAllowedOrd(ord))
     {
-      throw new FallsProtocolException("forbidden_point", "Model subscription base is outside allowedPathPatterns.");
+      throw new BaskStreamProtocolException("forbidden_point", "Model subscription base is outside allowedPathPatterns.");
     }
     try
     {
       OrdTarget target = BOrd.make(ord).resolve(runtime.getService(), context);
       if (!target.canRead())
       {
-        throw new FallsProtocolException("forbidden_point", "Model subscription base is not readable for the authenticated user.");
+        throw new BaskStreamProtocolException("forbidden_point", "Model subscription base is not readable for the authenticated user.");
       }
       BObject object = target.get();
       BComponent component = object instanceof BComponent ? (BComponent) object : target.getComponent();
       if (component == null)
       {
-        throw new FallsProtocolException("invalid_point", "Model subscription base did not resolve to a component.");
+        throw new BaskStreamProtocolException("invalid_point", "Model subscription base did not resolve to a component.");
       }
       return component;
     }
-    catch (FallsProtocolException e)
+    catch (BaskStreamProtocolException e)
     {
       throw e;
     }
     catch (Exception e)
     {
-      throw new FallsProtocolException("invalid_point",
+      throw new BaskStreamProtocolException("invalid_point",
           e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
     }
   }
 
-  private void subscribeModelComponent(BComponent component, int depth) throws FallsProtocolException
+  private void subscribeModelComponent(BComponent component, int depth) throws BaskStreamProtocolException
   {
     String key = componentKey(component);
     if (key == null)
+    {
+      return;
+    }
+    if (!BaskStreamAccessPolicy.isAllowed(runtime.getService(), key) || !canReadModelComponent(component))
     {
       return;
     }
@@ -890,7 +953,7 @@ final class FallsClientSession
     {
       if (getSubscriptionCount() >= runtime.getService().getMaxSubscriptionsPerClientValue())
       {
-        throw new FallsProtocolException("subscription_limit", "maxSubscriptionsPerClient exceeded.");
+        throw new BaskStreamProtocolException("subscription_limit", "maxSubscriptionsPerClient exceeded.");
       }
       modelSubscriptions.put(key, component);
       if (!modelSubscriber.isSubscribed(component))
@@ -929,6 +992,24 @@ final class FallsClientSession
     return component == null || component.getSlotPath() == null ? null : component.getSlotPath().toString();
   }
 
+  private boolean canReadModelComponent(BComponent component)
+  {
+    String key = componentKey(component);
+    if (key == null || !BaskStreamAccessPolicy.isAllowed(runtime.getService(), key))
+    {
+      return false;
+    }
+    try
+    {
+      OrdTarget target = BOrd.make(key).resolve(runtime.getService(), context);
+      return target.canRead();
+    }
+    catch (Exception e)
+    {
+      return false;
+    }
+  }
+
   private Map<String, Object> componentSummary(BComponent component)
   {
     Map<String, Object> summary = new LinkedHashMap<String, Object>();
@@ -943,7 +1024,7 @@ final class FallsClientSession
     return summary;
   }
 
-  private void handleReadSchedule(String id, Map<String, Object> request) throws FallsProtocolException
+  private void handleReadSchedule(String id, Map<String, Object> request) throws BaskStreamProtocolException
   {
     String ord = runtime.getCodec().optionalString(request, "ord");
     if (ord == null || ord.trim().length() == 0)
@@ -956,12 +1037,12 @@ final class FallsClientSession
     send(response);
   }
 
-  private void ensureAlarmServiceSubscribed() throws FallsProtocolException
+  private void ensureAlarmServiceSubscribed() throws BaskStreamProtocolException
   {
     BAlarmService alarmService = BAlarmService.getService();
     if (alarmService == null)
     {
-      throw new FallsProtocolException("alarm_failed", "Niagara AlarmService is not available.");
+      throw new BaskStreamProtocolException("alarm_failed", "Niagara AlarmService is not available.");
     }
     if (!alarmSubscriber.isSubscribed(alarmService))
     {
@@ -969,9 +1050,9 @@ final class FallsClientSession
     }
   }
 
-  private FallsPointResolver.ResolvedPoint ensurePointSubscription(String pointOrd) throws FallsProtocolException
+  private BaskStreamPointResolver.ResolvedPoint ensurePointSubscription(String pointOrd) throws BaskStreamProtocolException
   {
-    FallsPointResolver.ResolvedPoint existing = subscriptions.get(pointOrd);
+    BaskStreamPointResolver.ResolvedPoint existing = subscriptions.get(pointOrd);
     if (existing != null)
     {
       return existing;
@@ -979,10 +1060,10 @@ final class FallsClientSession
 
     if (getSubscriptionCount() >= runtime.getService().getMaxSubscriptionsPerClientValue())
     {
-      throw new FallsProtocolException("subscription_limit", "maxSubscriptionsPerClient exceeded.");
+      throw new BaskStreamProtocolException("subscription_limit", "maxSubscriptionsPerClient exceeded.");
     }
 
-    FallsPointResolver.ResolvedPoint resolved = runtime.getResolver().resolve(pointOrd, context);
+    BaskStreamPointResolver.ResolvedPoint resolved = runtime.getResolver().resolve(pointOrd, context);
     subscriptions.put(pointOrd, resolved);
     if (resolved.getComponent() != null && !subscriber.isSubscribed(resolved.getComponent()))
     {
@@ -1014,14 +1095,14 @@ final class FallsClientSession
 
   private void removeActualSubscription(String pointOrd)
   {
-    FallsPointResolver.ResolvedPoint removed = subscriptions.remove(pointOrd);
+    BaskStreamPointResolver.ResolvedPoint removed = subscriptions.remove(pointOrd);
     if (removed == null || removed.getComponent() == null)
     {
       return;
     }
 
     boolean stillNeeded = false;
-    for (FallsPointResolver.ResolvedPoint point : subscriptions.values())
+    for (BaskStreamPointResolver.ResolvedPoint point : subscriptions.values())
     {
       if (removed.getComponent().equals(point.getComponent()))
       {
@@ -1040,10 +1121,10 @@ final class FallsClientSession
   {
     try
     {
-      FallsPointResolver.ResolvedPoint point = runtime.getResolver().resolve(pointOrd, context);
+      BaskStreamPointResolver.ResolvedPoint point = runtime.getResolver().resolve(pointOrd, context);
       return runtime.getResolver().snapshot(point, context).toWire();
     }
-    catch (FallsProtocolException e)
+    catch (BaskStreamProtocolException e)
     {
       return errorEntry(pointOrd, e.getCode(), e.getMessage());
     }
@@ -1059,7 +1140,7 @@ final class FallsClientSession
 
     String slotName = event.getSlotName();
     List<Object> changes = new ArrayList<Object>();
-    for (FallsPointResolver.ResolvedPoint point : subscriptions.values())
+    for (BaskStreamPointResolver.ResolvedPoint point : subscriptions.values())
     {
       if (point.getComponent() == null || !point.getComponent().equals(event.getSourceComponent()))
       {
@@ -1075,7 +1156,7 @@ final class FallsClientSession
       {
         changes.add(runtime.getResolver().snapshot(point, context).toWire());
       }
-      catch (FallsProtocolException e)
+      catch (BaskStreamProtocolException e)
       {
         changes.add(errorEntry(point.getPointOrd(), e.getCode(), e.getMessage()));
       }
@@ -1095,10 +1176,11 @@ final class FallsClientSession
     }
 
     BAlarmRecord record = alarmRecord(event);
-    for (FallsAlarmResolver.AlarmSubscriptionSpec spec : alarmSubscriptions.values())
+    for (BaskStreamAlarmResolver.AlarmSubscriptionSpec spec : alarmSubscriptions.values())
     {
       try
       {
+        runtime.getAlarmResolver().requireAllowed(spec);
         if (record != null && spec.source != null && !runtime.getAlarmResolver().matchesSource(record, spec.source))
         {
           continue;
@@ -1129,7 +1211,7 @@ final class FallsClientSession
         }
         send(message);
       }
-      catch (FallsProtocolException e)
+      catch (BaskStreamProtocolException e)
       {
         sendError(null, e.getCode(), e.getMessage());
       }
@@ -1144,6 +1226,10 @@ final class FallsClientSession
     }
 
     BComponent source = event.getSourceComponent();
+    if (!canReadModelComponent(source))
+    {
+      return;
+    }
     Map<String, Object> message = baseMessage("model_cov", null);
     message.put("sequence", Long.valueOf(++modelSequence));
     message.put("timestamp", Long.valueOf(Clock.millis()));
@@ -1311,38 +1397,38 @@ final class FallsClientSession
     }
   }
 
-  private String normalizeGroupName(String group) throws FallsProtocolException
+  private String normalizeGroupName(String group) throws BaskStreamProtocolException
   {
     if (group == null || group.trim().length() == 0)
     {
-      throw new FallsProtocolException("bad_request", "Field 'group' is required.");
+      throw new BaskStreamProtocolException("bad_request", "Field 'group' is required.");
     }
     String normalized = group.trim();
     if (normalized.length() > MAX_GROUP_NAME_LENGTH)
     {
-      throw new FallsProtocolException("bad_request", "Field 'group' must be " + MAX_GROUP_NAME_LENGTH + " characters or fewer.");
+      throw new BaskStreamProtocolException("bad_request", "Field 'group' must be " + MAX_GROUP_NAME_LENGTH + " characters or fewer.");
     }
     return normalized;
   }
 
-  private int normalizeLeaseSec(Object value) throws FallsProtocolException
+  private int normalizeLeaseSec(Object value) throws BaskStreamProtocolException
   {
     int leaseSec = runtime.getService().getSubscriptionLeaseSecValue();
     if (value != null)
     {
       if (!(value instanceof Number))
       {
-        throw new FallsProtocolException("bad_request", "Field 'leaseSec' must be a number.");
+        throw new BaskStreamProtocolException("bad_request", "Field 'leaseSec' must be a number.");
       }
       leaseSec = ((Number) value).intValue();
     }
     if (leaseSec < 0)
     {
-      throw new FallsProtocolException("bad_request", "Field 'leaseSec' cannot be negative.");
+      throw new BaskStreamProtocolException("bad_request", "Field 'leaseSec' cannot be negative.");
     }
     if (leaseSec > MAX_LEASE_SEC)
     {
-      throw new FallsProtocolException("bad_request", "Field 'leaseSec' cannot exceed " + MAX_LEASE_SEC + ".");
+      throw new BaskStreamProtocolException("bad_request", "Field 'leaseSec' cannot exceed " + MAX_LEASE_SEC + ".");
     }
     return leaseSec;
   }
@@ -1441,7 +1527,7 @@ final class FallsClientSession
     }
   }
 
-  private List<String> optionalStringList(Map<String, Object> request, String key) throws FallsProtocolException
+  private List<String> optionalStringList(Map<String, Object> request, String key) throws BaskStreamProtocolException
   {
     Object value = request.get(key);
     if (value == null)
@@ -1450,7 +1536,7 @@ final class FallsClientSession
     }
     if (!(value instanceof List))
     {
-      throw new FallsProtocolException("bad_request", "Field '" + key + "' must be an array of strings.");
+      throw new BaskStreamProtocolException("bad_request", "Field '" + key + "' must be an array of strings.");
     }
     List<?> raw = (List<?>) value;
     List<String> out = new ArrayList<String>(raw.size());
@@ -1458,14 +1544,14 @@ final class FallsClientSession
     {
       if (!(entry instanceof String))
       {
-        throw new FallsProtocolException("bad_request", "Field '" + key + "' must be an array of strings.");
+        throw new BaskStreamProtocolException("bad_request", "Field '" + key + "' must be an array of strings.");
       }
       out.add((String) entry);
     }
     return out;
   }
 
-  private Boolean optionalBoolean(Map<String, Object> request, String key) throws FallsProtocolException
+  private Boolean optionalBoolean(Map<String, Object> request, String key) throws BaskStreamProtocolException
   {
     Object value = request.get(key);
     if (value == null)
@@ -1476,7 +1562,7 @@ final class FallsClientSession
     {
       return (Boolean) value;
     }
-    throw new FallsProtocolException("bad_request", "Field '" + key + "' must be a boolean.");
+    throw new BaskStreamProtocolException("bad_request", "Field '" + key + "' must be a boolean.");
   }
 
   private List<Object> listOf(Object... values)
@@ -1516,7 +1602,7 @@ final class FallsClientSession
     }
     catch (IOException e)
     {
-      runtime.getService().LOG.log(Level.WARNING, "Failed to write NiagaraFalls websocket frame", e);
+      runtime.getService().LOG.log(Level.WARNING, "Failed to write baskStream websocket frame", e);
       close(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
     }
   }

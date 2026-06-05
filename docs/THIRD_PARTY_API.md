@@ -1,14 +1,16 @@
-# NiagaraFalls Third-Party API Guide
+# baskStream Third-Party API Guide
 
-NiagaraFalls exposes station data over an authenticated WebSocket endpoint using MessagePack frames. It is intended to give external applications a faster live-data path than polling Niagara REST, while still preserving Niagara's native object model, permissions, point status, alarms, schedules, and histories.
+baskStream exposes station data over an authenticated WebSocket endpoint using MessagePack frames. It is intended to give external applications a faster live-data path than polling Niagara REST, while still preserving Niagara's native object model, permissions, point status, alarms, schedules, and histories.
 
 ## Connection Model
 
-- Health check: `GET /falls/health`
-- WebSocket endpoint: `/falls`
-- Transport: `wss://<station>/falls`
+- Health check: `GET /stream/health`
+- WebSocket endpoint: `/stream`
+- Transport: `wss://<station>/stream`
 - Encoding: MessagePack maps
+- Service path: the BASkStreamService `servletName` property must be `stream`; blank values are defaulted to `stream` on startup.
 - Authentication: the WebSocket runs inside the authenticated Niagara web session. Browser-based clients can reuse the logged-in station session; service clients should perform Niagara login first and then connect with the session cookies.
+- Origin policy: browser WebSocket requests must come from the station origin or an exact origin listed in the service `allowedOrigins` property. Service clients that do not send an `Origin` header are allowed after Niagara authentication.
 
 Every request frame should include:
 
@@ -53,13 +55,22 @@ Response:
   "id": "caps-1",
   "capabilities": {
     "apiVersion": "1.2",
-    "operations": ["browse", "read", "subscribe", "replace_subscriptions", "write"],
+    "operations": ["browse", "read", "subscribe", "replace_subscriptions", "write", "read_alarms", "ack_alarm", "clear_alarm"],
     "limits": {
       "maxSubscriptionsPerClient": 500,
       "heartbeatIntervalSec": 30,
       "subscriptionLeaseSec": 300,
       "covBatchWindowMillis": 100,
-      "maxBrowseDepth": 4
+      "defaultBrowseDepth": 1,
+      "maxBrowseDepth": 4,
+      "defaultSearchDepth": 32,
+      "maxSearchDepth": 64,
+      "defaultSearchLimit": 500,
+      "maxSearchLimit": 5000,
+      "defaultSearchMaxVisited": 50000,
+      "maxSearchMaxVisited": 200000,
+      "defaultSearchTimeoutMillis": 5000,
+      "maxSearchTimeoutMillis": 30000
     },
     "subscriptions": {
       "pointCov": true,
@@ -106,6 +117,8 @@ Response:
     "display": "AHU-01",
     "description": "lonworks:LonDevice",
     "typeSpec": "lonworks:LonDevice",
+    "status": "{ok}",
+    "ok": true,
     "kind": "container",
     "hasChildren": true,
     "writable": false,
@@ -151,21 +164,25 @@ Returns the same node shape as `browse`, without children. Use this for precise 
 
 ### `search`
 
-Searches within a bounded tree branch and returns matching shallow node objects. Use this for discovery shortcuts such as finding writable points, history-capable points, or schedules under a branch. It is still bounded by the service browse-depth limit.
+Searches within a guarded station branch and returns matching shallow node objects. Use this for raw station search, discovery shortcuts, writable point lookup, history-capable points, or schedules under a branch. Search uses its own traversal limits and is not bounded by the shallow browse-depth limit.
 
 ```json
 {
   "op": "search",
   "id": "3b",
   "base": "slot:/Drivers",
-  "depth": 4,
+  "depth": 32,
   "query": "temp",
   "features": ["point"],
   "operations": ["read"],
   "metadata": "none",
-  "limit": 250
+  "limit": 250,
+  "maxVisited": 50000,
+  "timeoutMillis": 5000
 }
 ```
+
+`depth` is search-specific. Clients may also send `maxDepth`; when both are present, `maxDepth` wins. `maxVisited`, `limit`, and `timeoutMillis` are capped by the values reported from `capabilities`.
 
 Response:
 
@@ -175,12 +192,20 @@ Response:
   "id": "3b",
   "result": {
     "base": "slot:/Drivers",
+    "depth": 32,
+    "limit": 250,
+    "maxVisited": 50000,
+    "timeoutMillis": 5000,
+    "visited": 1200,
     "count": 12,
     "truncated": false,
+    "truncatedReasons": [],
     "nodes": []
   }
 }
 ```
+
+When traversal stops early, `truncated` is `true` and `truncatedReasons` may include `"limit"`, `"depth"`, `"visited"`, or `"timeout"`.
 
 ### `read`
 
@@ -542,6 +567,62 @@ Common scopes:
 - `ack_pending`
 - `all`
 
+### `ack_alarm`
+
+Acknowledges one or more alarm records by UUID through Niagara `BAlarmService.ackAlarm`. The authenticated Niagara user is used as the acknowledgement user.
+
+```json
+{
+  "op": "ack_alarm",
+  "id": "9b",
+  "uuid": "594379d7-2d8d-4cef-a766-8097a09d52e0"
+}
+```
+
+Batch form:
+
+```json
+{
+  "op": "ack_alarms",
+  "id": "9c",
+  "uuids": [
+    "594379d7-2d8d-4cef-a766-8097a09d52e0"
+  ]
+}
+```
+
+Optional `source` narrows the action to an expected alarm source ORD and is also used with `allowedPathPatterns` when the service is not wide open.
+
+Response:
+
+```json
+{
+  "op": "alarm_action_result",
+  "id": "9b",
+  "alarms": {
+    "action": "ack_alarm",
+    "count": 1,
+    "alarms": [
+      { "uuid": "...", "ok": true, "ackState": "acked" }
+    ]
+  }
+}
+```
+
+### `clear_alarm`
+
+Force-clears one or more alarm records by UUID. This is intentionally separate from acknowledgement: it audits the force-clear action, marks the local alarm record normal and acknowledged, and updates the alarm database. If the source is still actively in alarm, Niagara may generate or update an alarm again.
+
+```json
+{
+  "op": "clear_alarm",
+  "id": "9d",
+  "uuid": "594379d7-2d8d-4cef-a766-8097a09d52e0"
+}
+```
+
+Batch form uses `clear_alarms` with `uuids`. Prefer `ack_alarm` for ordinary operator acknowledgement and reserve `clear_alarm` for explicit force-clear workflows.
+
 ### `subscribe_alarms`
 
 Subscribes to alarm changes. The initial response always includes a bounded snapshot. Live pushes default to event mode so large stations do not resend all alarms on every transition.
@@ -628,6 +709,8 @@ Treat `model_cov` as a hint and refresh the affected branch with `browse` or `de
 
 `metadata` is attached to each node when requested. It is evidence for your application; it is not a universal equipment classifier.
 
+Browse, search, and describe node objects include the underlying component `status` and boolean `ok` when Niagara exposes component status. That applies to devices, networks, point folders, equipment-like folders, and point nodes. Point `read`/subscription payloads also include `status` and `ok`, but those are value-status snapshots rather than structural node metadata.
+
 Recommended flow:
 
 1. Initial discovery: call shallow `browse` requests with `"metadata": "full"` where you need equipment/point evidence.
@@ -662,7 +745,9 @@ Model events are branch-scoped hints, not a full synchronized station database. 
       "slotPath": "slot:/Drivers/LonNetwork/Floor1/AHU_01/points",
       "name": "points",
       "display": "points",
-      "typeSpec": "lonworks:LonPointDeviceExt"
+      "typeSpec": "lonworks:LonPointDeviceExt",
+      "status": "{ok}",
+      "ok": true
     },
     "ancestors": [],
     "driver": {
@@ -726,13 +811,13 @@ Use these flags as evidence:
 - `classification.isProxyPoint`: the point has a driver proxy extension. This is strong evidence that it maps to an external protocol/device value.
 - `classification.equipmentCertainty`: currently `"device"` only when the component is a `BDevice`; otherwise `"unknown"`.
 
-Do not treat `"unknown"` as “not equipment.” It only means NiagaraFalls cannot prove that the component is equipment from type alone.
+Do not treat `"unknown"` as “not equipment.” It only means baskStream cannot prove that the component is equipment from type alone.
 
 ### Parent And Ancestors
 
 - `metadata.parent` is the direct parent component.
 - `metadata.ancestors` is the root-to-parent chain.
-- Each summary contains `ord`, `slotPath`, `name`, `display`, and `typeSpec`.
+- Each summary contains `ord`, `slotPath`, `name`, `display`, `typeSpec`, `status`, and `ok` when a component is present.
 
 This lets client applications preserve the station's structure and make their own grouping decisions.
 
@@ -752,11 +837,13 @@ This lets client applications preserve the station's structure and make their ow
 
 This is the best source for protocol-neutral device/point discovery across BACnet, Lon, Modbus, and other Niagara drivers.
 
+The `network`, `device`, `pointDeviceExt`, and `proxyExt` summaries include component `status` and `ok` when present, so clients can show device/network health without first reading a child point.
+
 ### Point Metadata
 
 `metadata.point` includes:
 
-- whether NiagaraFalls recognized the node as a point
+- whether baskStream recognized the node as a point
 - whether it is writable
 - point facets such as units, precision, range, or text labels when available
 - proxy extension summary
@@ -779,7 +866,7 @@ Tags and relations are supplemental. If a provider throws while reading tags or 
 
 ## Equipment Discovery Guidance
 
-NiagaraFalls intentionally does not claim 100% equipment detection.
+baskStream intentionally does not claim 100% equipment detection.
 
 Deterministic:
 

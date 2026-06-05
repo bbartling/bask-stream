@@ -8,19 +8,19 @@ const stationUrl = new URL(process.env.NIAGARA_URL || "https://192.168.0.125");
 const host = stationUrl.hostname;
 const port = Number(stationUrl.port || 443);
 const username = process.env.NIAGARA_USER || "admin";
-const password = process.env.NIAGARA_PASSWORD || process.env.FALLS_PASSWORD;
-const pointBase = process.env.FALLS_POINT_BASE || "slot:/Drivers/LonNetwork/Floor1/AHU_01/points";
+const password = process.env.NIAGARA_PASSWORD || process.env.STREAM_PASSWORD;
+const pointBase = process.env.STREAM_POINT_BASE || "slot:/Drivers/LonNetwork/Floor1/AHU_01/points";
 const points = {
-  numeric: process.env.FALLS_NUMERIC_POINT || `${pointBase}/TestPoint`,
-  bool: process.env.FALLS_BOOL_POINT || `${pointBase}/TestBool`,
-  enum: process.env.FALLS_ENUM_POINT || `${pointBase}/TestEnum`,
-  string: process.env.FALLS_STRING_POINT || `${pointBase}/TestString`
+  numeric: process.env.STREAM_NUMERIC_POINT || `${pointBase}/TestPoint`,
+  bool: process.env.STREAM_BOOL_POINT || `${pointBase}/TestBool`,
+  enum: process.env.STREAM_ENUM_POINT || `${pointBase}/TestEnum`,
+  string: process.env.STREAM_STRING_POINT || `${pointBase}/TestString`
 };
-const scheduleOrd = process.env.FALLS_SCHEDULE_ORD || "slot:/Schedules/BooleanSchedule";
-const historyOrd = process.env.FALLS_HISTORY_ORD || "slot:/Drivers/LonNetwork/Floor1/AHU_01/points/SpaceTemp";
+const scheduleOrd = process.env.STREAM_SCHEDULE_ORD || "slot:/Schedules/BooleanSchedule";
+const historyOrd = process.env.STREAM_HISTORY_ORD || "slot:/Drivers/LonNetwork/Floor1/AHU_01/points/SpaceTemp";
 
 if (!password) {
-  throw new Error("Set NIAGARA_PASSWORD or FALLS_PASSWORD before running the live smoke test.");
+  throw new Error("Set NIAGARA_PASSWORD or STREAM_PASSWORD before running the live smoke test.");
 }
 
 const cookies = new Map();
@@ -162,7 +162,7 @@ async function login() {
   }
 
   await request("GET", "/j_security_check/");
-  const health = await request("GET", "/falls/health");
+  const health = await request("GET", "/stream/health");
   if (health.status !== 200) {
     throw new Error(`Health check failed after login with HTTP ${health.status}.`);
   }
@@ -365,7 +365,7 @@ function connectWebSocket() {
     const key = crypto.randomBytes(16).toString("base64");
     const socket = tls.connect({ host, port, rejectUnauthorized: false }, () => {
       socket.write(
-        "GET /falls HTTP/1.1\r\n" +
+        "GET /stream HTTP/1.1\r\n" +
         `Host: ${host}\r\n` +
         "Upgrade: websocket\r\n" +
         "Connection: Upgrade\r\n" +
@@ -393,7 +393,7 @@ function connectWebSocket() {
   });
 }
 
-class FallsClient {
+class BaskStreamClient {
   constructor(socket, initial) {
     this.socket = socket;
     this.state = { socket, buffer: initial };
@@ -463,7 +463,7 @@ function testValueFor(snapshot, kind, suffix = "") {
     return String(snapshot.value).toLowerCase() !== "true";
   }
   if (kind === "string") {
-    return `NiagaraFalls live smoke ${Date.now()}${suffix}`;
+    return `baskStream live smoke ${Date.now()}${suffix}`;
   }
   throw new Error(`No test value strategy for ${kind}.`);
 }
@@ -504,7 +504,23 @@ function hasOwn(value, key) {
   return isObject(value) && Object.prototype.hasOwnProperty.call(value, key);
 }
 
+function assertNodeStatus(node, label) {
+  if (!isObject(node)) {
+    throw new Error(`${label} missing node object.`);
+  }
+  if (!hasOwn(node, "status")) {
+    throw new Error(`${label} missing status.`);
+  }
+  if (!hasOwn(node, "ok")) {
+    throw new Error(`${label} missing ok.`);
+  }
+}
+
 function assertNodeMetadata(node, label, options = {}) {
+  if (options.expectStatus) {
+    assertNodeStatus(node, label);
+  }
+
   const metadata = node?.metadata;
   if (!isObject(metadata)) {
     throw new Error(`${label} missing metadata object.`);
@@ -534,6 +550,11 @@ function assertNodeMetadata(node, label, options = {}) {
   if (options.expectParent && !metadata.parent.slotPath) {
     throw new Error(`${label} missing parent slotPath.`);
   }
+  if (options.expectParent) {
+    if (!isObject(metadata.parent)) {
+      throw new Error(`${label} parent missing summary.`);
+    }
+  }
   if (options.expectDistinctParent && node?.slotPath && metadata.parent.slotPath === node.slotPath) {
     throw new Error(`${label} parent slotPath matched the node slotPath.`);
   }
@@ -553,6 +574,19 @@ function assertNodeMetadata(node, label, options = {}) {
     throw new Error(`${label} point metadata is not writable.`);
   }
 
+  for (const key of ["network", "device"]) {
+    const summary = metadata.driver[key];
+    if (isObject(summary) && summary.slotPath) {
+      assertNodeStatus(summary, `${label} driver.${key}`);
+    }
+  }
+  for (const key of ["pointDeviceExt", "proxyExt"]) {
+    const summary = metadata.driver[key];
+    if (isObject(summary) && hasOwn(summary, "status")) {
+      assertNodeStatus(summary, `${label} driver.${key}`);
+    }
+  }
+
   return metadata;
 }
 
@@ -567,11 +601,15 @@ function summarizeMetadata(metadata) {
     isProxyPoint: classification.isProxyPoint,
     isDriverDevice: classification.isDriverDevice,
     equipmentCertainty: classification.equipmentCertainty,
+    parentStatus: metadata.parent?.status || null,
+    parentOk: hasOwn(metadata.parent, "ok") ? metadata.parent.ok : null,
     parent: metadata.parent?.slotPath || null,
     ancestorCount: Array.isArray(metadata.ancestors) ? metadata.ancestors.length : null,
     driverBacked: metadata.driver?.isDriverBacked,
     network: metadata.driver?.network?.slotPath || null,
+    networkStatus: metadata.driver?.network?.status || null,
     device: metadata.driver?.device?.slotPath || null,
+    deviceStatus: metadata.driver?.device?.status || null,
     pointDeviceExt: metadata.driver?.pointDeviceExt?.slotPath || null,
     proxyExt: metadata.driver?.proxyExt?.slotPath || null,
     pointExtensions: Array.isArray(metadata.point?.extensions) ? metadata.point.extensions.length : null,
@@ -748,7 +786,7 @@ async function main() {
   line("health", health);
 
   const ws = await connectWebSocket();
-  const client = new FallsClient(ws.socket, ws.initial);
+  const client = new BaskStreamClient(ws.socket, ws.initial);
   const results = [];
   const pass = (name, details = {}) => results.push({ name, ok: true, ...details });
   const fail = (name, error) => results.push({ name, ok: false, error: error.message || String(error) });
@@ -768,6 +806,8 @@ async function main() {
       "search",
       "describe_write",
       "describe_history",
+      "ack_alarm",
+      "clear_alarm",
       "replace_subscriptions",
       "renew_subscriptions",
       "release_subscriptions",
@@ -778,9 +818,17 @@ async function main() {
         throw new Error(`Capabilities missing ${op}.`);
       }
     }
+    const limits = capabilities.capabilities?.limits || {};
+    for (const key of ["maxBrowseDepth", "defaultSearchDepth", "maxSearchDepth", "maxSearchLimit", "defaultSearchMaxVisited", "defaultSearchTimeoutMillis"]) {
+      if (typeof limits[key] !== "number") {
+        throw new Error(`Capabilities missing numeric limit ${key}.`);
+      }
+    }
     pass("capabilities", {
       apiVersion: capabilities.capabilities?.apiVersion,
-      maxSubscriptions: capabilities.capabilities?.limits?.maxSubscriptionsPerClient
+      maxSubscriptions: limits.maxSubscriptionsPerClient,
+      defaultSearchDepth: limits.defaultSearchDepth,
+      maxSearchLimit: limits.maxSearchLimit
     });
   }
   catch (error) {
@@ -843,7 +891,6 @@ async function main() {
   try {
     const search = await client.send("search", {
       base: pointBase,
-      depth: 1,
       features: ["point"],
       operations: ["read"],
       limit: 20
@@ -858,6 +905,80 @@ async function main() {
     fail("search points", error);
   }
 
+  try {
+    const search = await client.send("search", {
+      base: "slot:/",
+      query: "TestPoint",
+      features: ["point"],
+      operations: ["read"],
+      metadata: "none",
+      limit: 50
+    });
+    const nodes = search.result?.nodes || [];
+    const numeric = nodes.find((node) => node.slotPath === points.numeric);
+    if (!numeric) {
+      throw new Error(`Root search did not find ${points.numeric}.`);
+    }
+    assertNodeStatus(numeric, "search root deep point");
+    pass("search root deep point", {
+      count: search.result?.count,
+      visited: search.result?.visited,
+      truncated: search.result?.truncated,
+      reasons: search.result?.truncatedReasons
+    });
+  }
+  catch (error) {
+    fail("search root deep point", error);
+  }
+
+  try {
+    const search = await client.send("search", {
+      base: "slot:/",
+      query: "TestPoint",
+      features: ["point"],
+      operations: ["write"],
+      writable: true,
+      limit: 50
+    });
+    const nodes = search.result?.nodes || [];
+    const numeric = nodes.find((node) => node.slotPath === points.numeric);
+    if (!numeric) {
+      throw new Error(`Writable root search did not find ${points.numeric}.`);
+    }
+    if (!numeric.features?.includes("point") || !numeric.operations?.includes("write") || numeric.writable !== true) {
+      throw new Error("Writable root search returned numeric point without point/write/writable markers.");
+    }
+    assertNodeStatus(numeric, "search root writable point");
+    pass("search root writable point", {
+      count: search.result?.count,
+      truncated: search.result?.truncated
+    });
+  }
+  catch (error) {
+    fail("search root writable point", error);
+  }
+
+  try {
+    const search = await client.send("search", {
+      base: "slot:/",
+      features: ["point"],
+      limit: 1
+    });
+    if (search.result?.count !== 1 || search.result?.truncated !== true) {
+      throw new Error("Search limit=1 did not report a single truncated result.");
+    }
+    if (!Array.isArray(search.result?.truncatedReasons) || !search.result.truncatedReasons.includes("limit")) {
+      throw new Error("Search truncation did not include limit reason.");
+    }
+    pass("search truncation", {
+      count: search.result.count,
+      reasons: search.result.truncatedReasons
+    });
+  }
+  catch (error) {
+    fail("search truncation", error);
+  }
+
   const snapshots = {};
   try {
     const describe = await client.send("describe", { ord: points.numeric, metadata: false });
@@ -867,6 +988,7 @@ async function main() {
     if (hasOwn(describe.node, "metadata")) {
       throw new Error("Describe metadata false unexpectedly included node metadata.");
     }
+    assertNodeStatus(describe.node, "describe metadata none");
     pass("describe metadata none", {
       slotPath: describe.node?.slotPath,
       metadata: describe.metadata
@@ -885,7 +1007,8 @@ async function main() {
         expectPoint: true,
         expectControlPoint: true,
         expectWritable: true,
-        expectPointMetadata: true
+        expectPointMetadata: true,
+        expectStatus: true
       });
       const read = await readOne(client, point);
       const details = {

@@ -1,4 +1,4 @@
-package com.basidekick.niagarafalls;
+package com.basidekick.baskstream;
 
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
@@ -18,7 +18,7 @@ import javax.baja.web.WebOp;
 @NiagaraProperty(
   name = "wsPath",
   type = "baja:String",
-  defaultValue = "/falls",
+  defaultValue = "/stream",
   flags = Flags.SUMMARY
 )
 @NiagaraProperty(
@@ -58,6 +58,12 @@ import javax.baja.web.WebOp;
   flags = Flags.SUMMARY
 )
 @NiagaraProperty(
+  name = "allowedOrigins",
+  type = "baja:String",
+  defaultValue = "",
+  flags = Flags.SUMMARY
+)
+@NiagaraProperty(
   name = "activeConnections",
   type = "int",
   defaultValue = "0",
@@ -69,16 +75,21 @@ import javax.baja.web.WebOp;
   defaultValue = "0",
   flags = Flags.READONLY | Flags.TRANSIENT
 )
-public final class BNiagaraFallsService extends BWebServlet
+public final class BBaskStreamService extends BWebServlet
 {
-  public static final Logger LOG = Logger.getLogger(BNiagaraFallsService.class.getName());
-  private static final AtomicReference<BNiagaraFallsService> ACTIVE = new AtomicReference<BNiagaraFallsService>();
-  private volatile FallsWebSocketRuntime runtime;
+  public static final Logger LOG = Logger.getLogger(BBaskStreamService.class.getName());
+  private static final AtomicReference<BBaskStreamService> ACTIVE = new AtomicReference<BBaskStreamService>();
+  private volatile BaskStreamWebSocketRuntime runtime;
+
+  public BBaskStreamService()
+  {
+    ensureServletNameDefault();
+  }
 
 //region /*+ ------------ BEGIN BAJA AUTO GENERATED CODE ------------ +*/
 //@formatter:off
-/*@ $com.basidekick.niagarafalls.BNiagaraFallsService(2397860206)1.0$ @*/
-/* Generated Mon May 25 21:23:30 MST 2026 by Slot-o-Matic (c) Tridium, Inc. 2012-2026 */
+/*@ $com.basidekick.baskstream.BBaskStreamService(3179159577)1.0$ @*/
+/* Generated Thu May 28 05:57:15 MST 2026 by Slot-o-Matic (c) Tridium, Inc. 2012-2026 */
 
   //region Property "wsPath"
 
@@ -87,7 +98,7 @@ public final class BNiagaraFallsService extends BWebServlet
    * @see #getWsPath
    * @see #setWsPath
    */
-  public static final Property wsPath = newProperty(Flags.SUMMARY, "/falls", null);
+  public static final Property wsPath = newProperty(Flags.SUMMARY, "/stream", null);
 
   /**
    * Get the {@code wsPath} property.
@@ -241,6 +252,29 @@ public final class BNiagaraFallsService extends BWebServlet
 
   //endregion Property "allowedPathPatterns"
 
+  //region Property "allowedOrigins"
+
+  /**
+   * Slot for the {@code allowedOrigins} property.
+   * @see #getAllowedOrigins
+   * @see #setAllowedOrigins
+   */
+  public static final Property allowedOrigins = newProperty(Flags.SUMMARY, "", null);
+
+  /**
+   * Get the {@code allowedOrigins} property.
+   * @see #allowedOrigins
+   */
+  public String getAllowedOrigins() { return getString(allowedOrigins); }
+
+  /**
+   * Set the {@code allowedOrigins} property.
+   * @see #allowedOrigins
+   */
+  public void setAllowedOrigins(String v) { setString(allowedOrigins, v, null); }
+
+  //endregion Property "allowedOrigins"
+
   //region Property "activeConnections"
 
   /**
@@ -291,14 +325,14 @@ public final class BNiagaraFallsService extends BWebServlet
 
   @Override
   public Type getType() { return TYPE; }
-  public static final Type TYPE = Sys.loadType(BNiagaraFallsService.class);
+  public static final Type TYPE = Sys.loadType(BBaskStreamService.class);
 
   //endregion Type
 
 //@formatter:on
 //endregion /*+ ------------ END BAJA AUTO GENERATED CODE -------------- +*/
 
-  public static BNiagaraFallsService getActiveService()
+  public static BBaskStreamService getActiveService()
   {
     return ACTIVE.get();
   }
@@ -306,8 +340,10 @@ public final class BNiagaraFallsService extends BWebServlet
   @Override
   public void serviceStarted() throws Exception
   {
+    ensureServletNameDefault();
     super.serviceStarted();
-    runtime = new FallsWebSocketRuntime(this);
+    ensureServletNameDefault();
+    runtime = new BaskStreamWebSocketRuntime(this);
     ACTIVE.set(this);
     setRuntimeMetrics(0, 0);
     configOk();
@@ -320,7 +356,7 @@ public final class BNiagaraFallsService extends BWebServlet
     {
       setRuntimeMetrics(0, 0);
     }
-    FallsWebSocketRuntime current = runtime;
+    BaskStreamWebSocketRuntime current = runtime;
     runtime = null;
     if (current != null)
     {
@@ -334,14 +370,14 @@ public final class BNiagaraFallsService extends BWebServlet
   {
     if (!getEnabled())
     {
-      op.getResponse().sendError(503, "NiagaraFallsService is disabled.");
+      op.getResponse().sendError(503, "BASkStreamService is disabled.");
       return;
     }
 
-    FallsWebSocketRuntime current = runtime;
+    BaskStreamWebSocketRuntime current = runtime;
     if (current == null)
     {
-      op.getResponse().sendError(503, "NiagaraFallsService is not running.");
+      op.getResponse().sendError(503, "BASkStreamService is not running.");
       return;
     }
 
@@ -416,6 +452,34 @@ public final class BNiagaraFallsService extends BWebServlet
     return BRelTime.makeSeconds(getHeartbeatIntervalSecValue());
   }
 
+  private void ensureServletNameDefault()
+  {
+    String current = getServletName();
+    if (current != null && current.trim().length() > 0)
+    {
+      return;
+    }
+
+    String configuredPath = getWsPath();
+    if (configuredPath == null || configuredPath.trim().length() == 0)
+    {
+      setServletName("stream");
+      return;
+    }
+
+    String normalized = configuredPath.trim();
+    while (normalized.startsWith("/"))
+    {
+      normalized = normalized.substring(1);
+    }
+    int slash = normalized.indexOf('/');
+    if (slash >= 0)
+    {
+      normalized = normalized.substring(0, slash);
+    }
+    setServletName(normalized.length() == 0 ? "stream" : normalized);
+  }
+
   void logFine(String message)
   {
     if (LOG.isLoggable(Level.FINE))
@@ -438,7 +502,7 @@ public final class BNiagaraFallsService extends BWebServlet
     op.getResponse().setStatus(200);
     op.setContentType("application/json;charset=UTF-8");
     op.getWriter().write("{"
-      + "\"service\":\"NiagaraFallsService\","
+      + "\"service\":\"BASkStreamService\","
       + "\"enabled\":" + getEnabled() + ","
       + "\"wsPath\":\"" + escapeJson(getWsPath()) + "\","
       + "\"apiVersion\":\"1.2\","
@@ -449,6 +513,7 @@ public final class BNiagaraFallsService extends BWebServlet
       + "\"heartbeatIntervalSec\":" + getHeartbeatIntervalSecValue() + ","
       + "\"subscriptionLeaseSec\":" + getSubscriptionLeaseSecValue() + ","
       + "\"covBatchWindowMillis\":" + getCovBatchWindowMillisValue() + ","
+      + "\"allowedOrigins\":\"" + escapeJson(getAllowedOrigins()) + "\","
       + "\"activeConnections\":" + getActiveConnectionsValue() + ","
       + "\"totalSubscriptions\":" + getTotalSubscriptionsValue() + ","
       + "\"authenticatedUser\":" + toJsonString(user)

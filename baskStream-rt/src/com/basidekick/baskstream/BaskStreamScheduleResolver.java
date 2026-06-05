@@ -1,4 +1,4 @@
-package com.basidekick.niagarafalls;
+package com.basidekick.baskstream;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -33,18 +33,22 @@ import javax.baja.sys.BWeekday;
 import javax.baja.sys.Clock;
 import javax.baja.sys.Context;
 
-final class FallsScheduleResolver
+final class BaskStreamScheduleResolver
 {
-  private final BNiagaraFallsService service;
+  private final BBaskStreamService service;
 
-  FallsScheduleResolver(BNiagaraFallsService service)
+  BaskStreamScheduleResolver(BBaskStreamService service)
   {
     this.service = service;
   }
 
-  Map<String, Object> readSchedule(String ord, Object atValue, Context context) throws FallsProtocolException
+  Map<String, Object> readSchedule(String ord, Object atValue, Context context) throws BaskStreamProtocolException
   {
     String candidate = normalizeOrd(ord);
+    if (!BaskStreamAccessPolicy.isAllowed(service, candidate))
+    {
+      throw new BaskStreamProtocolException("forbidden_point", "Schedule is outside the allowedPathPatterns policy.");
+    }
     long at = normalizeMillis(atValue, Clock.millis());
 
     try
@@ -52,7 +56,7 @@ final class FallsScheduleResolver
       OrdTarget target = BOrd.make(candidate).resolve(service, context);
       if (!target.canRead())
       {
-        throw new FallsProtocolException("forbidden_point", "Schedule is not readable for the authenticated user.");
+        throw new BaskStreamProtocolException("forbidden_point", "Schedule is not readable for the authenticated user.");
       }
 
       BObject object = target.get();
@@ -62,18 +66,18 @@ final class FallsScheduleResolver
 
       if (schedule == null)
       {
-        throw new FallsProtocolException("invalid_point", "Resolved target is not a Niagara schedule.");
+        throw new BaskStreamProtocolException("invalid_point", "Resolved target is not a Niagara schedule.");
       }
 
       return toWire(schedule, target, BAbsTime.make(at), context);
     }
-    catch (FallsProtocolException e)
+    catch (BaskStreamProtocolException e)
     {
       throw e;
     }
     catch (Exception e)
     {
-      throw new FallsProtocolException("schedule_failed",
+      throw new BaskStreamProtocolException("schedule_failed",
           e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
     }
   }
@@ -336,22 +340,22 @@ final class FallsScheduleResolver
     return time == null ? null : time.toString(context);
   }
 
-  private String normalizeOrd(String ord) throws FallsProtocolException
+  private String normalizeOrd(String ord) throws BaskStreamProtocolException
   {
     if (ord == null || ord.trim().length() == 0)
     {
-      throw new FallsProtocolException("bad_request", "Field 'ord' is required for read_schedule.");
+      throw new BaskStreamProtocolException("bad_request", "Field 'ord' is required for read_schedule.");
     }
 
     String candidate = ord.trim();
     if (!candidate.startsWith("slot:/"))
     {
-      throw new FallsProtocolException("invalid_point", "read_schedule supports slot:/ ords only.");
+      throw new BaskStreamProtocolException("invalid_point", "read_schedule supports slot:/ ords only.");
     }
     return candidate;
   }
 
-  private long normalizeMillis(Object value, long defaultValue) throws FallsProtocolException
+  private long normalizeMillis(Object value, long defaultValue) throws BaskStreamProtocolException
   {
     if (value == null)
     {
@@ -359,7 +363,7 @@ final class FallsScheduleResolver
     }
     if (!(value instanceof Number))
     {
-      throw new FallsProtocolException("bad_request", "Schedule time fields must be epoch milliseconds.");
+      throw new BaskStreamProtocolException("bad_request", "Schedule time fields must be epoch milliseconds.");
     }
     return ((Number) value).longValue();
   }

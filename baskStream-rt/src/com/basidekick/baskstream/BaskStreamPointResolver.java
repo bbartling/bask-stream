@@ -1,10 +1,9 @@
-package com.basidekick.niagarafalls;
+package com.basidekick.baskstream;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 import javax.baja.naming.BOrd;
 import javax.baja.naming.OrdTarget;
@@ -25,30 +24,30 @@ import javax.baja.sys.Clock;
 import javax.baja.sys.Context;
 import javax.baja.sys.Property;
 
-final class FallsPointResolver
+final class BaskStreamPointResolver
 {
-  private final BNiagaraFallsService service;
+  private final BBaskStreamService service;
 
-  FallsPointResolver(BNiagaraFallsService service)
+  BaskStreamPointResolver(BBaskStreamService service)
   {
     this.service = service;
   }
 
-  ResolvedPoint resolve(String pointOrd, Context context) throws FallsProtocolException
+  ResolvedPoint resolve(String pointOrd, Context context) throws BaskStreamProtocolException
   {
     if (pointOrd == null || pointOrd.trim().length() == 0)
     {
-      throw new FallsProtocolException("invalid_point", "Point ORD cannot be blank.");
+      throw new BaskStreamProtocolException("invalid_point", "Point ORD cannot be blank.");
     }
 
     if (!pointOrd.startsWith("slot:/"))
     {
-      throw new FallsProtocolException("invalid_point", "Only slot:/ ORDs are supported.");
+      throw new BaskStreamProtocolException("invalid_point", "Only slot:/ ORDs are supported.");
     }
 
     if (!isAllowed(pointOrd))
     {
-      throw new FallsProtocolException("forbidden_point", "Point is outside the allowedPathPatterns policy.");
+      throw new BaskStreamProtocolException("forbidden_point", "Point is outside the allowedPathPatterns policy.");
     }
 
     try
@@ -56,18 +55,18 @@ final class FallsPointResolver
       OrdTarget target = BOrd.make(pointOrd).resolve(service, context);
       if (!target.canRead())
       {
-        throw new FallsProtocolException("forbidden_point", "Point is not readable for the authenticated user.");
+        throw new BaskStreamProtocolException("forbidden_point", "Point is not readable for the authenticated user.");
       }
 
       BObject targetObject = target.get();
       if (targetObject == null)
       {
-        throw new FallsProtocolException("invalid_point", "Resolved point target was null.");
+        throw new BaskStreamProtocolException("invalid_point", "Resolved point target was null.");
       }
 
       if (!(targetObject instanceof BValue) && !(targetObject instanceof BComplex))
       {
-        throw new FallsProtocolException("invalid_point", "Resolved target is not a readable Baja value.");
+        throw new BaskStreamProtocolException("invalid_point", "Resolved target is not a readable Baja value.");
       }
 
       BComplex complex = targetObject instanceof BComplex ? (BComplex) targetObject : null;
@@ -90,17 +89,17 @@ final class FallsPointResolver
       String displayName = component != null ? component.getDisplayName(context) : targetObject.toString(context);
       return new ResolvedPoint(pointOrd, target, component, observedSlot, displayName);
     }
-    catch (FallsProtocolException e)
+    catch (BaskStreamProtocolException e)
     {
       throw e;
     }
     catch (Exception e)
     {
-      throw new FallsProtocolException("invalid_point", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+      throw new BaskStreamProtocolException("invalid_point", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
     }
   }
 
-  PointSnapshot snapshot(ResolvedPoint point, Context context) throws FallsProtocolException
+  PointSnapshot snapshot(ResolvedPoint point, Context context) throws BaskStreamProtocolException
   {
     try
     {
@@ -156,13 +155,13 @@ final class FallsPointResolver
       return new PointSnapshot(point.getPointOrd(), point.getDisplayName(), valueType, wireValue,
           displayValue, status, ok, Clock.millis(), extra);
     }
-    catch (FallsProtocolException e)
+    catch (BaskStreamProtocolException e)
     {
       throw e;
     }
     catch (Exception e)
     {
-      throw new FallsProtocolException("read_failed", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+      throw new BaskStreamProtocolException("read_failed", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
     }
   }
 
@@ -198,58 +197,7 @@ final class FallsPointResolver
 
   private boolean isAllowed(String pointOrd)
   {
-    for (Pattern pattern : parsePatterns(service.getAllowedPathPatterns()))
-    {
-      if (pattern.matcher(pointOrd).matches())
-      {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static List<Pattern> parsePatterns(String configured)
-  {
-    String raw = configured == null ? "" : configured;
-    String[] pieces = raw.split("[\\r\\n,;]+");
-    List<Pattern> patterns = new ArrayList<Pattern>();
-    for (String piece : pieces)
-    {
-      String trimmed = piece.trim();
-      if (trimmed.length() == 0)
-      {
-        continue;
-      }
-      patterns.add(Pattern.compile(toRegex(trimmed)));
-    }
-    if (patterns.isEmpty())
-    {
-      patterns.add(Pattern.compile(toRegex("slot:/*")));
-    }
-    return patterns;
-  }
-
-  private static String toRegex(String wildcard)
-  {
-    StringBuilder regex = new StringBuilder("^");
-    for (int i = 0; i < wildcard.length(); i++)
-    {
-      char ch = wildcard.charAt(i);
-      if (ch == '*')
-      {
-        regex.append(".*");
-      }
-      else if ("\\.[]{}()+-^$?|".indexOf(ch) >= 0)
-      {
-        regex.append('\\').append(ch);
-      }
-      else
-      {
-        regex.append(ch);
-      }
-    }
-    regex.append('$');
-    return regex.toString();
+    return BaskStreamAccessPolicy.isAllowed(service, pointOrd);
   }
 
   static final class ResolvedPoint
@@ -299,12 +247,12 @@ final class FallsPointResolver
       return observedSlot == null || slotName == null || observedSlot.equals(slotName);
     }
 
-    BObject getSnapshotSource() throws FallsProtocolException
+    BObject getSnapshotSource() throws BaskStreamProtocolException
     {
       BObject targetObject = target.get();
       if (targetObject == null)
       {
-        throw new FallsProtocolException("read_failed", "Resolved point target is no longer available.");
+        throw new BaskStreamProtocolException("read_failed", "Resolved point target is no longer available.");
       }
 
       if (targetObject instanceof BIStatusValue)

@@ -1,4 +1,4 @@
-package com.basidekick.niagarafalls;
+package com.basidekick.baskstream;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,21 +23,21 @@ import javax.baja.sys.Property;
 
 import com.tridium.history.BHistory;
 
-final class FallsHistoryResolver
+final class BaskStreamHistoryResolver
 {
   private static final long DEFAULT_WINDOW_MILLIS = 24L * 60L * 60L * 1000L;
   private static final int DEFAULT_LIMIT = 500;
   private static final int MAX_LIMIT = 5000;
 
-  private final BNiagaraFallsService service;
+  private final BBaskStreamService service;
 
-  FallsHistoryResolver(BNiagaraFallsService service)
+  BaskStreamHistoryResolver(BBaskStreamService service)
   {
     this.service = service;
   }
 
   Map<String, Object> readHistory(String ord, Object startValue, Object endValue, Object limitValue, Context context)
-      throws FallsProtocolException
+      throws BaskStreamProtocolException
   {
     String candidate = normalizeOrd(ord);
     long end = normalizeMillis(endValue, Clock.millis());
@@ -46,7 +46,7 @@ final class FallsHistoryResolver
 
     if (start > end)
     {
-      throw new FallsProtocolException("bad_request", "History start must be less than or equal to end.");
+      throw new BaskStreamProtocolException("bad_request", "History start must be less than or equal to end.");
     }
 
     List<Object> histories = candidate.startsWith("history:")
@@ -62,7 +62,7 @@ final class FallsHistoryResolver
     return result;
   }
 
-  Map<String, Object> describeHistory(String ord, Context context) throws FallsProtocolException
+  Map<String, Object> describeHistory(String ord, Context context) throws BaskStreamProtocolException
   {
     String candidate = normalizeOrd(ord);
     List<Object> histories = candidate.startsWith("history:")
@@ -76,43 +76,44 @@ final class FallsHistoryResolver
     return result;
   }
 
-  private List<Object> describeDirectHistory(String ord, Context context) throws FallsProtocolException
+  private List<Object> describeDirectHistory(String ord, Context context) throws BaskStreamProtocolException
   {
     try
     {
       OrdTarget target = BOrd.make(ord).resolve(service, context);
       if (!target.canRead())
       {
-        throw new FallsProtocolException("forbidden_point", "History is not readable for the authenticated user.");
+        throw new BaskStreamProtocolException("forbidden_point", "History is not readable for the authenticated user.");
       }
 
       BObject object = target.get();
       if (!(object instanceof BHistory))
       {
-        throw new FallsProtocolException("invalid_point", "Resolved target is not a Niagara history.");
+        throw new BaskStreamProtocolException("invalid_point", "Resolved target is not a Niagara history.");
       }
+      ensureDirectHistoryAllowed((BHistory) object);
 
       List<Object> histories = new ArrayList<Object>(1);
       histories.add(describeSingleHistory((BHistory) object, null, context));
       return histories;
     }
-    catch (FallsProtocolException e)
+    catch (BaskStreamProtocolException e)
     {
       throw e;
     }
     catch (Exception e)
     {
-      throw new FallsProtocolException("history_failed",
+      throw new BaskStreamProtocolException("history_failed",
           e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
     }
   }
 
-  private List<Object> describePointHistories(String ord, Context context) throws FallsProtocolException
+  private List<Object> describePointHistories(String ord, Context context) throws BaskStreamProtocolException
   {
-    FallsPointResolver.ResolvedPoint point = new FallsPointResolver(service).resolve(ord, context);
+    BaskStreamPointResolver.ResolvedPoint point = new BaskStreamPointResolver(service).resolve(ord, context);
     if (point.getComponent() == null)
     {
-      throw new FallsProtocolException("history_failed", "Resolved point has no backing component.");
+      throw new BaskStreamProtocolException("history_failed", "Resolved point has no backing component.");
     }
 
     BHistoryExt[] historyExts = point.getComponent().getChildren(BHistoryExt.class);
@@ -135,50 +136,51 @@ final class FallsHistoryResolver
   }
 
   private List<Object> resolveDirectHistory(String ord, long start, long end, int limit, Context context)
-      throws FallsProtocolException
+      throws BaskStreamProtocolException
   {
     try
     {
       OrdTarget target = BOrd.make(ord).resolve(service, context);
       if (!target.canRead())
       {
-        throw new FallsProtocolException("forbidden_point", "History is not readable for the authenticated user.");
+        throw new BaskStreamProtocolException("forbidden_point", "History is not readable for the authenticated user.");
       }
 
       BObject object = target.get();
       if (!(object instanceof BHistory))
       {
-        throw new FallsProtocolException("invalid_point", "Resolved target is not a Niagara history.");
+        throw new BaskStreamProtocolException("invalid_point", "Resolved target is not a Niagara history.");
       }
+      ensureDirectHistoryAllowed((BHistory) object);
 
       List<Object> histories = new ArrayList<Object>(1);
       histories.add(readSingleHistory((BHistory) object, null, start, end, limit, context));
       return histories;
     }
-    catch (FallsProtocolException e)
+    catch (BaskStreamProtocolException e)
     {
       throw e;
     }
     catch (Exception e)
     {
-      throw new FallsProtocolException("history_failed",
+      throw new BaskStreamProtocolException("history_failed",
           e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
     }
   }
 
   private List<Object> resolvePointHistory(String ord, long start, long end, int limit, Context context)
-      throws FallsProtocolException
+      throws BaskStreamProtocolException
   {
-    FallsPointResolver.ResolvedPoint point = new FallsPointResolver(service).resolve(ord, context);
+    BaskStreamPointResolver.ResolvedPoint point = new BaskStreamPointResolver(service).resolve(ord, context);
     if (point.getComponent() == null)
     {
-      throw new FallsProtocolException("history_failed", "Resolved point has no backing component.");
+      throw new BaskStreamProtocolException("history_failed", "Resolved point has no backing component.");
     }
 
     BHistoryExt[] historyExts = point.getComponent().getChildren(BHistoryExt.class);
     if (historyExts.length == 0)
     {
-      throw new FallsProtocolException("history_failed", "Point does not have any attached history extensions.");
+      throw new BaskStreamProtocolException("history_failed", "Point does not have any attached history extensions.");
     }
 
     List<Object> histories = new ArrayList<Object>(historyExts.length);
@@ -194,14 +196,31 @@ final class FallsHistoryResolver
 
     if (histories.isEmpty())
     {
-      throw new FallsProtocolException("history_failed", "Attached history extensions did not resolve to readable histories.");
+      throw new BaskStreamProtocolException("history_failed", "Attached history extensions did not resolve to readable histories.");
     }
 
     return histories;
   }
 
+  private void ensureDirectHistoryAllowed(BHistory history) throws BaskStreamProtocolException
+  {
+    if (BaskStreamAccessPolicy.isDefaultWideOpen(service))
+    {
+      return;
+    }
+
+    BHistoryConfig config = history.getConfig();
+    String source = config == null || config.getSource() == null ? null : config.getSource().toString();
+    String slotOrd = BaskStreamAccessPolicy.extractSlotOrd(source);
+    if (slotOrd == null || !slotOrd.startsWith("slot:/") || !BaskStreamAccessPolicy.isAllowed(service, slotOrd))
+    {
+      throw new BaskStreamProtocolException("forbidden_point",
+          "History source is outside the allowedPathPatterns policy.");
+    }
+  }
+
   private Map<String, Object> readSingleHistory(BHistory history, BHistoryExt historyExt, long start, long end, int limit,
-      Context context) throws FallsProtocolException
+      Context context) throws BaskStreamProtocolException
   {
     Map<String, Object> wire = describeSingleHistory(history, historyExt, context);
 
@@ -222,7 +241,7 @@ final class FallsHistoryResolver
     }
     catch (Exception e)
     {
-      throw new FallsProtocolException("history_failed",
+      throw new BaskStreamProtocolException("history_failed",
           e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
     }
     finally
@@ -374,21 +393,21 @@ final class FallsHistoryResolver
     return wire;
   }
 
-  private String normalizeOrd(String ord) throws FallsProtocolException
+  private String normalizeOrd(String ord) throws BaskStreamProtocolException
   {
     if (ord == null || ord.trim().length() == 0)
     {
-      throw new FallsProtocolException("bad_request", "Field 'ord' is required for read_history.");
+      throw new BaskStreamProtocolException("bad_request", "Field 'ord' is required for read_history.");
     }
     String candidate = ord.trim();
     if (!candidate.startsWith("slot:/") && !candidate.startsWith("history:"))
     {
-      throw new FallsProtocolException("invalid_point", "read_history supports slot:/ or history: ords only.");
+      throw new BaskStreamProtocolException("invalid_point", "read_history supports slot:/ or history: ords only.");
     }
     return candidate;
   }
 
-  private long normalizeMillis(Object value, long defaultValue) throws FallsProtocolException
+  private long normalizeMillis(Object value, long defaultValue) throws BaskStreamProtocolException
   {
     if (value == null)
     {
@@ -396,12 +415,12 @@ final class FallsHistoryResolver
     }
     if (!(value instanceof Number))
     {
-      throw new FallsProtocolException("bad_request", "History time fields must be epoch milliseconds.");
+      throw new BaskStreamProtocolException("bad_request", "History time fields must be epoch milliseconds.");
     }
     return ((Number) value).longValue();
   }
 
-  private int normalizeLimit(Object value) throws FallsProtocolException
+  private int normalizeLimit(Object value) throws BaskStreamProtocolException
   {
     if (value == null)
     {
@@ -409,7 +428,7 @@ final class FallsHistoryResolver
     }
     if (!(value instanceof Number))
     {
-      throw new FallsProtocolException("bad_request", "Field 'limit' must be a number.");
+      throw new BaskStreamProtocolException("bad_request", "Field 'limit' must be a number.");
     }
     int limit = ((Number) value).intValue();
     if (limit <= 0)

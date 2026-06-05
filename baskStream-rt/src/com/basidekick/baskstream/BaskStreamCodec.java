@@ -1,4 +1,4 @@
-package com.basidekick.niagarafalls;
+package com.basidekick.baskstream;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -12,18 +12,27 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-final class FallsCodec
+final class BaskStreamCodec
 {
   private static final Charset UTF_8 = Charset.forName("UTF-8");
+  private static final int MAX_PAYLOAD_BYTES = 1024 * 1024;
+  private static final int MAX_STRING_BYTES = 64 * 1024;
+  private static final int MAX_BINARY_BYTES = 64 * 1024;
+  private static final int MAX_CONTAINER_SIZE = 5000;
+  private static final int MAX_NESTING_DEPTH = 64;
 
-  Map<String, Object> decodeMessage(byte[] payload) throws FallsProtocolException
+  Map<String, Object> decodeMessage(byte[] payload) throws BaskStreamProtocolException
   {
     try
     {
-      Object decoded = decode(new DataInputStream(new ByteArrayInputStream(payload)));
+      if (payload.length > MAX_PAYLOAD_BYTES)
+      {
+        throw new BaskStreamProtocolException("bad_request", "MessagePack payload exceeds maximum size.");
+      }
+      Object decoded = decode(new DataInputStream(new ByteArrayInputStream(payload)), 0);
       if (!(decoded instanceof Map))
       {
-        throw new FallsProtocolException("bad_request", "Message payload must be a map.");
+        throw new BaskStreamProtocolException("bad_request", "Message payload must be a map.");
       }
       @SuppressWarnings("unchecked")
       Map<String, Object> result = (Map<String, Object>) decoded;
@@ -31,11 +40,11 @@ final class FallsCodec
     }
     catch (EOFException e)
     {
-      throw new FallsProtocolException("bad_request", "Unexpected end of MessagePack payload.");
+      throw new BaskStreamProtocolException("bad_request", "Unexpected end of MessagePack payload.");
     }
     catch (IOException e)
     {
-      throw new FallsProtocolException("bad_request", "Unable to decode MessagePack payload: " + e.getMessage());
+      throw new BaskStreamProtocolException("bad_request", "Unable to decode MessagePack payload: " + e.getMessage());
     }
   }
 
@@ -48,12 +57,12 @@ final class FallsCodec
     return bytes.toByteArray();
   }
 
-  String requireString(Map<String, Object> message, String key) throws FallsProtocolException
+  String requireString(Map<String, Object> message, String key) throws BaskStreamProtocolException
   {
     Object value = message.get(key);
     if (!(value instanceof String))
     {
-      throw new FallsProtocolException("bad_request", "Field '" + key + "' must be a string.");
+      throw new BaskStreamProtocolException("bad_request", "Field '" + key + "' must be a string.");
     }
     return (String) value;
   }
@@ -64,12 +73,12 @@ final class FallsCodec
     return value instanceof String ? (String) value : null;
   }
 
-  List<String> requireStringList(Map<String, Object> message, String key) throws FallsProtocolException
+  List<String> requireStringList(Map<String, Object> message, String key) throws BaskStreamProtocolException
   {
     Object value = message.get(key);
     if (!(value instanceof List))
     {
-      throw new FallsProtocolException("bad_request", "Field '" + key + "' must be an array of strings.");
+      throw new BaskStreamProtocolException("bad_request", "Field '" + key + "' must be an array of strings.");
     }
 
     List<?> values = (List<?>) value;
@@ -78,15 +87,20 @@ final class FallsCodec
     {
       if (!(entry instanceof String))
       {
-        throw new FallsProtocolException("bad_request", "Field '" + key + "' must be an array of strings.");
+        throw new BaskStreamProtocolException("bad_request", "Field '" + key + "' must be an array of strings.");
       }
       result.add((String) entry);
     }
     return result;
   }
 
-  private Object decode(DataInputStream in) throws IOException, FallsProtocolException
+  private Object decode(DataInputStream in, int depth) throws IOException, BaskStreamProtocolException
   {
+    if (depth > MAX_NESTING_DEPTH)
+    {
+      throw new BaskStreamProtocolException("bad_request", "MessagePack payload is nested too deeply.");
+    }
+
     int first = in.readUnsignedByte();
 
     if (first <= 0x7f)
@@ -103,11 +117,11 @@ final class FallsCodec
     }
     if ((first & 0xf0) == 0x90)
     {
-      return readArray(in, first & 0x0f);
+      return readArray(in, first & 0x0f, depth + 1);
     }
     if ((first & 0xf0) == 0x80)
     {
-      return readMap(in, first & 0x0f);
+      return readMap(in, first & 0x0f, depth + 1);
     }
 
     switch (first)
@@ -123,7 +137,7 @@ final class FallsCodec
       case 0xc5:
         return readBinary(in, in.readUnsignedShort());
       case 0xc6:
-        return readBinary(in, safeLength(in.readInt()));
+        return readBinary(in, safeLength(in.readInt(), MAX_BINARY_BYTES, "binary"));
       case 0xca:
         return Double.valueOf(in.readFloat());
       case 0xcb:
@@ -149,54 +163,58 @@ final class FallsCodec
       case 0xda:
         return readString(in, in.readUnsignedShort());
       case 0xdb:
-        return readString(in, safeLength(in.readInt()));
+        return readString(in, safeLength(in.readInt(), MAX_STRING_BYTES, "string"));
       case 0xdc:
-        return readArray(in, in.readUnsignedShort());
+        return readArray(in, safeLength(in.readUnsignedShort(), MAX_CONTAINER_SIZE, "array"), depth + 1);
       case 0xdd:
-        return readArray(in, safeLength(in.readInt()));
+        return readArray(in, safeLength(in.readInt(), MAX_CONTAINER_SIZE, "array"), depth + 1);
       case 0xde:
-        return readMap(in, in.readUnsignedShort());
+        return readMap(in, safeLength(in.readUnsignedShort(), MAX_CONTAINER_SIZE, "map"), depth + 1);
       case 0xdf:
-        return readMap(in, safeLength(in.readInt()));
+        return readMap(in, safeLength(in.readInt(), MAX_CONTAINER_SIZE, "map"), depth + 1);
       default:
-        throw new FallsProtocolException("bad_request", "Unsupported MessagePack type: 0x" + Integer.toHexString(first));
+        throw new BaskStreamProtocolException("bad_request", "Unsupported MessagePack type: 0x" + Integer.toHexString(first));
     }
   }
 
-  private byte[] readBinary(DataInputStream in, int length) throws IOException
+  private byte[] readBinary(DataInputStream in, int length) throws IOException, BaskStreamProtocolException
   {
+    safeLength(length, MAX_BINARY_BYTES, "binary");
     byte[] bytes = new byte[length];
     in.readFully(bytes);
     return bytes;
   }
 
-  private List<Object> readArray(DataInputStream in, int length) throws IOException, FallsProtocolException
+  private List<Object> readArray(DataInputStream in, int length, int depth) throws IOException, BaskStreamProtocolException
   {
+    safeLength(length, MAX_CONTAINER_SIZE, "array");
     List<Object> values = new ArrayList<Object>(length);
     for (int i = 0; i < length; i++)
     {
-      values.add(decode(in));
+      values.add(decode(in, depth));
     }
     return values;
   }
 
-  private Map<String, Object> readMap(DataInputStream in, int length) throws IOException, FallsProtocolException
+  private Map<String, Object> readMap(DataInputStream in, int length, int depth) throws IOException, BaskStreamProtocolException
   {
+    safeLength(length, MAX_CONTAINER_SIZE, "map");
     Map<String, Object> values = new LinkedHashMap<String, Object>(length);
     for (int i = 0; i < length; i++)
     {
-      Object key = decode(in);
+      Object key = decode(in, depth);
       if (!(key instanceof String))
       {
-        throw new FallsProtocolException("bad_request", "MessagePack map keys must be strings.");
+        throw new BaskStreamProtocolException("bad_request", "MessagePack map keys must be strings.");
       }
-      values.put((String) key, decode(in));
+      values.put((String) key, decode(in, depth));
     }
     return values;
   }
 
-  private String readString(DataInputStream in, int length) throws IOException
+  private String readString(DataInputStream in, int length) throws IOException, BaskStreamProtocolException
   {
+    safeLength(length, MAX_STRING_BYTES, "string");
     byte[] bytes = new byte[length];
     in.readFully(bytes);
     return new String(bytes, UTF_8);
@@ -375,11 +393,15 @@ final class FallsCodec
     out.write(bytes);
   }
 
-  private static int safeLength(int length) throws FallsProtocolException
+  private static int safeLength(int length, int max, String type) throws BaskStreamProtocolException
   {
     if (length < 0)
     {
-      throw new FallsProtocolException("bad_request", "Negative MessagePack length.");
+      throw new BaskStreamProtocolException("bad_request", "Negative MessagePack length.");
+    }
+    if (length > max)
+    {
+      throw new BaskStreamProtocolException("bad_request", "MessagePack " + type + " length exceeds maximum size.");
     }
     return length;
   }

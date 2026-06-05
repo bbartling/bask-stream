@@ -34,13 +34,13 @@ plugins {
 }
 
 moduleManifest {
-  moduleName.set("NiagaraFalls")
+  moduleName.set("baskStream")
   runtimeProfile.set(rt)
-  preferredSymbol.set("NF")
-  vendor.set("QAGraphics")
+  preferredSymbol.set("bsStream")
+  vendor.set("BASidekick")
   vendorVersion.set("1.0")
   bajaVersion.set("4.10")
-  description.set("NiagaraFalls external API service")
+  description.set("baskStream external API service")
 }
 
 val niagaraHome = providers.gradleProperty("niagara_home").get()
@@ -91,5 +91,5 @@ dependencies {
 tasks.named<Bajadoc>("bajadoc") {
   // Each of the packages you wish to include in your module's API documentation must be
   // enumerated below
-  includePackage("com.basidekick.niagarafalls")
+  includePackage("com.basidekick.baskstream")
 }

@@ -1,4 +1,4 @@
-package com.basidekick.niagarafalls;
+package com.basidekick.baskstream;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -9,13 +9,13 @@ import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.WebSocketAdapter;
 import org.eclipse.jetty.websocket.servlet.ServletUpgradeRequest;
 
-final class FallsJettyWebSocketConnection extends WebSocketAdapter
+final class BaskStreamJettyWebSocketConnection extends WebSocketAdapter
 {
-  private final FallsWebSocketRuntime runtime;
+  private final BaskStreamWebSocketRuntime runtime;
   private final ServletUpgradeRequest upgradeRequest;
-  private volatile FallsClientSession clientSession;
+  private volatile BaskStreamClientSession clientSession;
 
-  FallsJettyWebSocketConnection(FallsWebSocketRuntime runtime, ServletUpgradeRequest upgradeRequest)
+  BaskStreamJettyWebSocketConnection(BaskStreamWebSocketRuntime runtime, ServletUpgradeRequest upgradeRequest)
   {
     this.runtime = runtime;
     this.upgradeRequest = upgradeRequest;
@@ -29,7 +29,7 @@ final class FallsJettyWebSocketConnection extends WebSocketAdapter
 
     try
     {
-      FallsClientSession next = runtime.buildSession(this, upgradeRequest);
+      BaskStreamClientSession next = runtime.buildSession(this, upgradeRequest);
       if (!runtime.onOpen(next))
       {
         session.close(1013, "Connection limit reached.");
@@ -37,9 +37,9 @@ final class FallsJettyWebSocketConnection extends WebSocketAdapter
       }
       clientSession = next;
     }
-    catch (FallsProtocolException e)
+    catch (BaskStreamProtocolException e)
     {
-      runtime.getService().LOG.log(Level.WARNING, "Failed to initialize NiagaraFalls websocket session", e);
+      runtime.getService().LOG.log(Level.WARNING, "Failed to initialize baskStream websocket session", e);
       session.close(1008, e.getMessage());
     }
   }
@@ -47,7 +47,7 @@ final class FallsJettyWebSocketConnection extends WebSocketAdapter
   @Override
   public void onWebSocketBinary(byte[] payload, int offset, int len)
   {
-    FallsClientSession current = clientSession;
+    BaskStreamClientSession current = clientSession;
     if (current == null)
     {
       return;
@@ -70,7 +70,7 @@ final class FallsJettyWebSocketConnection extends WebSocketAdapter
   @Override
   public void onWebSocketClose(int statusCode, String reason)
   {
-    FallsClientSession current = clientSession;
+    BaskStreamClientSession current = clientSession;
     clientSession = null;
     if (current != null)
     {
@@ -82,8 +82,8 @@ final class FallsJettyWebSocketConnection extends WebSocketAdapter
   @Override
   public void onWebSocketError(Throwable cause)
   {
-    runtime.getService().LOG.log(Level.WARNING, "NiagaraFalls websocket transport error", cause);
-    FallsClientSession current = clientSession;
+    runtime.getService().LOG.log(Level.WARNING, "baskStream websocket transport error", cause);
+    BaskStreamClientSession current = clientSession;
     if (current != null)
     {
       current.close(cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage());

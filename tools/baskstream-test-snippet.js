@@ -103,7 +103,7 @@
   root.innerHTML = `
     <div class="nf-header">
       <div>
-        <h2>NiagaraFalls Tester</h2>
+        <h2>baskStream Tester</h2>
         <p>Running inside the current station page so the logged-in browser session is reused.</p>
       </div>
       <button class="nf-close">Close</button>
@@ -120,7 +120,7 @@
 
     <div class="nf-card">
       <label for="nf-wsUrl">WebSocket URL</label>
-      <input id="nf-wsUrl" value="wss://localhost/falls">
+      <input id="nf-wsUrl" value="wss://localhost/stream">
 
       <label for="nf-base">Browse Base</label>
       <input id="nf-base" value="slot:/Drivers">
@@ -428,5 +428,5 @@
     at: Date.now()
   });
 
-  log("NiagaraFalls tester injected. Click Connect.");
+  log("baskStream tester injected. Click Connect.");
 })();

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>NiagaraFalls API Companion</title>
+  <title>baskStream API Companion</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     :root {
@@ -815,7 +815,7 @@
     <header>
       <div class="topbar">
         <div>
-          <h1>NiagaraFalls API Companion</h1>
+          <h1>baskStream API Companion</h1>
           <div class="subtitle">Companion browser app for browsing, live value checks, metadata review, and subscription diagnostics.</div>
         </div>
         <div class="connection">
@@ -847,7 +847,7 @@
         <div class="guide-box">
           <div class="guide-title">Quick Start</div>
           <div class="guide-text">
-            For best results, run <code>node tools/niagarafalls-nav-tree-server.mjs --port=8787</code> and open <code>http://127.0.0.1:8787/</code>. The helper handles local browser login, self-signed certs, and WebSocket proxying for this test app.
+            For best results, run <code>node tools/baskstream-nav-tree-server.mjs --port=8787</code> and open <code>http://127.0.0.1:8787/</code>. The helper handles local browser login, self-signed certs, and WebSocket proxying for this test app.
           </div>
         </div>
         <div class="health-box">
@@ -860,7 +860,7 @@
           </div>
         </div>
       </div>
-      <nav class="tabs" role="tablist" aria-label="NiagaraFalls companion sections">
+      <nav class="tabs" role="tablist" aria-label="baskStream companion sections">
         <button id="guideTab" class="tab-button active" type="button" role="tab" aria-controls="guideView" aria-selected="true">Guide</button>
         <button id="testTab" class="tab-button" type="button" role="tab" aria-controls="testView" aria-selected="false">Test Console</button>
       </nav>
@@ -874,10 +874,10 @@
           </div>
           <div class="guide-panel-body">
             <ol class="guide-list">
-              <li>Install the compiled NiagaraFalls module jar on the station host and restart Niagara.</li>
-              <li>Add the NiagaraFalls service to the station, then verify <code>GET /falls/health</code> responds after login.</li>
+              <li>Install the compiled baskStream module jar on the station host and restart Niagara.</li>
+              <li>Add the BASkStreamService to the station, then verify <code>GET /stream/health</code> responds after login.</li>
               <li>Create or choose a Niagara user with only the station permissions your external app needs.</li>
-              <li>From the app, authenticate to the station, open <code>wss://&lt;station&gt;/falls</code>, then call <code>capabilities</code>.</li>
+              <li>From the app, authenticate to the station, open <code>wss://&lt;station&gt;/stream</code>, then call <code>capabilities</code>.</li>
               <li>Use <code>browse</code> or <code>search</code> for discovery, <code>read</code> for snapshots, and subscriptions for live screens.</li>
             </ol>
           </div>
@@ -906,7 +906,7 @@
           <div class="guide-panel-body">
             <div class="guide-grid">
               <div class="guide-note"><strong>HTTPS certificate</strong>Browsers and native clients must trust the station certificate or explicitly allow it in development.</div>
-              <div class="guide-note"><strong>Firewall path</strong>Allow the station web port and WebSocket upgrade traffic to <code>/falls</code>.</div>
+              <div class="guide-note"><strong>Firewall path</strong>Allow the station web port and WebSocket upgrade traffic to <code>/stream</code>.</div>
               <div class="guide-note"><strong>Niagara login</strong>The API runs under the authenticated Niagara session and station permissions.</div>
               <div class="guide-note"><strong>Reverse proxies</strong>Preserve cookies, TLS, and <code>Upgrade: websocket</code> headers if routing through a gateway.</div>
             </div>
@@ -1254,7 +1254,7 @@
       function directWebSocketUrl() {
         const url = new URL(stationOrigin());
         url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-        url.pathname = "/falls";
+        url.pathname = "/stream";
         url.search = "";
         url.hash = "";
         return url.href;
@@ -1808,7 +1808,7 @@
       function showApiSummary(title, payload) {
         els.details.innerHTML = [
           '<h2>' + escapeHtml(title) + '</h2>',
-          '<div class="ord">NiagaraFalls API diagnostic output</div>',
+          '<div class="ord">baskStream API diagnostic output</div>',
           '<div class="section"><h3>Summary</h3>' + rows(apiSummaryRows(payload)) + '</div>',
           '<div class="section"><h3>Raw JSON</h3><pre class="raw">' + escapeHtml(JSON.stringify(payload, null, 2)) + '</pre></div>'
         ].join("");
@@ -1917,7 +1917,7 @@
         }
 
         await fetch(origin + "/j_security_check/", { credentials: "include" });
-        const health = await fetch(origin + "/falls/health", { credentials: "include" });
+        const health = await fetch(origin + "/stream/health", { credentials: "include" });
         if (!health.ok) {
           throw new Error("Health check failed after login with HTTP " + health.status + ".");
         }
@@ -2008,7 +2008,7 @@
             setStatus("error", "error");
             logEvent("WebSocket error");
             reject(new Error(transport === "proxy"
-              ? "Local proxy is not reachable. Run: node tools/niagarafalls-nav-tree-server.mjs --port=8787"
+              ? "Local proxy is not reachable. Run: node tools/baskstream-nav-tree-server.mjs --port=8787"
               : "WebSocket connection failed."));
           };
           ws.onmessage = onSocketMessage;

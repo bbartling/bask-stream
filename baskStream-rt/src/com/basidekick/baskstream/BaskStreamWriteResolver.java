@@ -1,4 +1,4 @@
-package com.basidekick.niagarafalls;
+package com.basidekick.baskstream;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -36,18 +36,20 @@ import javax.baja.sys.Property;
 import javax.baja.status.BIStatusValue;
 import javax.baja.status.BStatusValue;
 
-final class FallsWriteResolver
+final class BaskStreamWriteResolver
 {
-  private final BNiagaraFallsService service;
-  private final FallsPointResolver pointResolver;
+  private static final int MAX_WRITE_POINTS_PER_REQUEST = 1000;
 
-  FallsWriteResolver(BNiagaraFallsService service, FallsPointResolver pointResolver)
+  private final BBaskStreamService service;
+  private final BaskStreamPointResolver pointResolver;
+
+  BaskStreamWriteResolver(BBaskStreamService service, BaskStreamPointResolver pointResolver)
   {
     this.service = service;
     this.pointResolver = pointResolver;
   }
 
-  List<Object> write(Map<String, Object> request, Context context) throws FallsProtocolException
+  List<Object> write(Map<String, Object> request, Context context) throws BaskStreamProtocolException
   {
     List<Map<String, Object>> specs = normalizeSpecs(request);
     List<Object> results = new ArrayList<Object>(specs.size());
@@ -63,7 +65,7 @@ final class FallsWriteResolver
       {
         results.add(writeOne(pointOrd, spec, context));
       }
-      catch (FallsProtocolException e)
+      catch (BaskStreamProtocolException e)
       {
         results.add(errorEntry(pointOrd, e.getCode(), e.getMessage()));
       }
@@ -71,7 +73,7 @@ final class FallsWriteResolver
     return results;
   }
 
-  List<Object> describe(Map<String, Object> request, Context context) throws FallsProtocolException
+  List<Object> describe(Map<String, Object> request, Context context) throws BaskStreamProtocolException
   {
     List<String> points = normalizeDescribePoints(request);
     List<Object> results = new ArrayList<Object>(points.size());
@@ -81,7 +83,7 @@ final class FallsWriteResolver
       {
         results.add(describeOne(pointOrd, context));
       }
-      catch (FallsProtocolException e)
+      catch (BaskStreamProtocolException e)
       {
         results.add(errorEntry(pointOrd, e.getCode(), e.getMessage()));
       }
@@ -89,9 +91,9 @@ final class FallsWriteResolver
     return results;
   }
 
-  private Map<String, Object> describeOne(String pointOrd, Context context) throws FallsProtocolException
+  private Map<String, Object> describeOne(String pointOrd, Context context) throws BaskStreamProtocolException
   {
-    FallsPointResolver.ResolvedPoint point = pointResolver.resolve(pointOrd, context);
+    BaskStreamPointResolver.ResolvedPoint point = pointResolver.resolve(pointOrd, context);
     OrdTarget target = point.getTarget();
     BComponent component = writableComponentOrComponent(target);
 
@@ -123,19 +125,19 @@ final class FallsWriteResolver
   }
 
   private Map<String, Object> writeOne(String pointOrd, Map<String, Object> spec, Context context)
-      throws FallsProtocolException
+      throws BaskStreamProtocolException
   {
-    FallsPointResolver.ResolvedPoint point = pointResolver.resolve(pointOrd, context);
+    BaskStreamPointResolver.ResolvedPoint point = pointResolver.resolve(pointOrd, context);
     OrdTarget target = point.getTarget();
     if (!target.canInvoke())
     {
-      throw new FallsProtocolException("forbidden_point", "Point actions are not invokable for the authenticated user.");
+      throw new BaskStreamProtocolException("forbidden_point", "Point actions are not invokable for the authenticated user.");
     }
 
     BComponent component = writableComponent(target);
     if (!(component instanceof BIWritablePoint))
     {
-      throw new FallsProtocolException("not_writable", "Resolved target is not a Niagara writable point.");
+      throw new BaskStreamProtocolException("not_writable", "Resolved target is not a Niagara writable point.");
     }
 
     String requestedAction = normalizeAction(optionalString(spec, "action"));
@@ -150,8 +152,8 @@ final class FallsWriteResolver
     return result;
   }
 
-  private PointSnapshot snapshotAfterWrite(FallsPointResolver.ResolvedPoint point, Context context)
-      throws FallsProtocolException
+  private PointSnapshot snapshotAfterWrite(BaskStreamPointResolver.ResolvedPoint point, Context context)
+      throws BaskStreamProtocolException
   {
     try
     {
@@ -165,7 +167,7 @@ final class FallsWriteResolver
   }
 
   private ActionInvocation buildInvocation(BComponent component, String actionName, Map<String, Object> spec)
-      throws FallsProtocolException
+      throws BaskStreamProtocolException
   {
     if ("auto".equals(actionName))
     {
@@ -193,11 +195,11 @@ final class FallsWriteResolver
       return enumInvocation((BEnumWritable) component, actionName, spec);
     }
 
-    throw new FallsProtocolException("not_writable", "Unsupported writable point type: " + component.getType());
+    throw new BaskStreamProtocolException("not_writable", "Unsupported writable point type: " + component.getType());
   }
 
   private ActionInvocation numericInvocation(BNumericWritable point, String actionName, Map<String, Object> spec)
-      throws FallsProtocolException
+      throws BaskStreamProtocolException
   {
     double value = requireDouble(spec.get("value"));
     if ("set".equals(actionName))
@@ -218,7 +220,7 @@ final class FallsWriteResolver
   }
 
   private ActionInvocation booleanInvocation(BBooleanWritable point, String actionName, Map<String, Object> spec)
-      throws FallsProtocolException
+      throws BaskStreamProtocolException
   {
     boolean value = requireBoolean(spec.get("value"));
     if ("set".equals(actionName))
@@ -243,7 +245,7 @@ final class FallsWriteResolver
   }
 
   private ActionInvocation stringInvocation(BStringWritable point, String actionName, Map<String, Object> spec)
-      throws FallsProtocolException
+      throws BaskStreamProtocolException
   {
     String value = requireStringValue(spec.get("value"));
     if ("set".equals(actionName))
@@ -264,7 +266,7 @@ final class FallsWriteResolver
   }
 
   private ActionInvocation enumInvocation(BEnumWritable point, String actionName, Map<String, Object> spec)
-      throws FallsProtocolException
+      throws BaskStreamProtocolException
   {
     BDynamicEnum value = requireEnum(point, spec.get("value"));
     if ("set".equals(actionName))
@@ -284,30 +286,30 @@ final class FallsWriteResolver
     throw unsupportedAction(actionName);
   }
 
-  private ActionInvocation noArg(BComponent component, String slotName, String wireName) throws FallsProtocolException
+  private ActionInvocation noArg(BComponent component, String slotName, String wireName) throws BaskStreamProtocolException
   {
     Action action = requireAction(component, slotName);
     return new ActionInvocation(wireName, action, component.getActionParameterDefault(action));
   }
 
   private ActionInvocation withParam(BComponent component, String slotName, String wireName, BValue parameter)
-      throws FallsProtocolException
+      throws BaskStreamProtocolException
   {
     return new ActionInvocation(wireName, requireAction(component, slotName), parameter);
   }
 
-  private Action requireAction(BComponent component, String slotName) throws FallsProtocolException
+  private Action requireAction(BComponent component, String slotName) throws BaskStreamProtocolException
   {
     Action action = component.getAction(slotName);
     if (action == null)
     {
-      throw new FallsProtocolException("unsupported_action",
+      throw new BaskStreamProtocolException("unsupported_action",
           "Writable point does not support action '" + slotName + "'.");
     }
     return action;
   }
 
-  private BComponent writableComponent(OrdTarget target) throws FallsProtocolException
+  private BComponent writableComponent(OrdTarget target) throws BaskStreamProtocolException
   {
     BObject object = target.get();
     if (object instanceof BComponent && ((BComponent) object) instanceof BIWritablePoint)
@@ -318,7 +320,7 @@ final class FallsWriteResolver
     {
       return target.getComponent();
     }
-    throw new FallsProtocolException("not_writable", "Resolved target is not a Niagara writable point.");
+    throw new BaskStreamProtocolException("not_writable", "Resolved target is not a Niagara writable point.");
   }
 
   private BComponent writableComponentOrComponent(OrdTarget target)
@@ -331,18 +333,19 @@ final class FallsWriteResolver
     return target.getComponent();
   }
 
-  private List<String> normalizeDescribePoints(Map<String, Object> request) throws FallsProtocolException
+  private List<String> normalizeDescribePoints(Map<String, Object> request) throws BaskStreamProtocolException
   {
     Object rawPoints = request.get("points");
     if (rawPoints instanceof List)
     {
       List<?> rawList = (List<?>) rawPoints;
+      requireMaxSize(rawList, "points");
       List<String> points = new ArrayList<String>(rawList.size());
       for (Object raw : rawList)
       {
         if (!(raw instanceof String))
         {
-          throw new FallsProtocolException("bad_request", "Field 'points' must be an array of point ORD strings.");
+          throw new BaskStreamProtocolException("bad_request", "Field 'points' must be an array of point ORD strings.");
         }
         points.add((String) raw);
       }
@@ -356,7 +359,7 @@ final class FallsWriteResolver
     }
     if (pointOrd == null || pointOrd.trim().length() == 0)
     {
-      throw new FallsProtocolException("bad_request", "Field 'point', 'ord', or 'points' is required.");
+      throw new BaskStreamProtocolException("bad_request", "Field 'point', 'ord', or 'points' is required.");
     }
     List<String> single = new ArrayList<String>(1);
     single.add(pointOrd);
@@ -576,7 +579,7 @@ final class FallsWriteResolver
     return options;
   }
 
-  private List<Map<String, Object>> normalizeSpecs(Map<String, Object> request) throws FallsProtocolException
+  private List<Map<String, Object>> normalizeSpecs(Map<String, Object> request) throws BaskStreamProtocolException
   {
     Object rawPoints = request.get("points");
     if (rawPoints == null)
@@ -587,16 +590,17 @@ final class FallsWriteResolver
     }
     if (!(rawPoints instanceof List))
     {
-      throw new FallsProtocolException("bad_request", "Field 'points' must be an array of write objects.");
+      throw new BaskStreamProtocolException("bad_request", "Field 'points' must be an array of write objects.");
     }
 
     List<?> rawList = (List<?>) rawPoints;
+    requireMaxSize(rawList, "points");
     List<Map<String, Object>> specs = new ArrayList<Map<String, Object>>(rawList.size());
     for (Object raw : rawList)
     {
       if (!(raw instanceof Map))
       {
-        throw new FallsProtocolException("bad_request", "Field 'points' must be an array of write objects.");
+        throw new BaskStreamProtocolException("bad_request", "Field 'points' must be an array of write objects.");
       }
       @SuppressWarnings("unchecked")
       Map<String, Object> spec = (Map<String, Object>) raw;
@@ -614,7 +618,7 @@ final class FallsWriteResolver
     return action.trim().toLowerCase().replace('-', '_');
   }
 
-  private BRelTime optionalDuration(Map<String, Object> spec) throws FallsProtocolException
+  private BRelTime optionalDuration(Map<String, Object> spec) throws BaskStreamProtocolException
   {
     Object value = spec.get("durationMillis");
     if (value == null)
@@ -640,7 +644,7 @@ final class FallsWriteResolver
         }
         catch (Exception e)
         {
-          throw new FallsProtocolException("bad_request", "Field 'duration' is not a valid Niagara relative time.");
+          throw new BaskStreamProtocolException("bad_request", "Field 'duration' is not a valid Niagara relative time.");
         }
       }
     }
@@ -650,12 +654,12 @@ final class FallsWriteResolver
     }
     if (!(value instanceof Number))
     {
-      throw new FallsProtocolException("bad_request", "Duration fields must be numeric milliseconds/seconds.");
+      throw new BaskStreamProtocolException("bad_request", "Duration fields must be numeric milliseconds/seconds.");
     }
     return BRelTime.make(((Number) value).longValue());
   }
 
-  private double requireDouble(Object value) throws FallsProtocolException
+  private double requireDouble(Object value) throws BaskStreamProtocolException
   {
     if (value instanceof Number)
     {
@@ -669,13 +673,13 @@ final class FallsWriteResolver
       }
       catch (NumberFormatException e)
       {
-        throw new FallsProtocolException("bad_request", "Field 'value' must be numeric for this writable point.");
+        throw new BaskStreamProtocolException("bad_request", "Field 'value' must be numeric for this writable point.");
       }
     }
-    throw new FallsProtocolException("bad_request", "Field 'value' is required and must be numeric.");
+    throw new BaskStreamProtocolException("bad_request", "Field 'value' is required and must be numeric.");
   }
 
-  private boolean requireBoolean(Object value) throws FallsProtocolException
+  private boolean requireBoolean(Object value) throws BaskStreamProtocolException
   {
     if (value instanceof Boolean)
     {
@@ -693,19 +697,19 @@ final class FallsWriteResolver
         return false;
       }
     }
-    throw new FallsProtocolException("bad_request", "Field 'value' is required and must be boolean-like.");
+    throw new BaskStreamProtocolException("bad_request", "Field 'value' is required and must be boolean-like.");
   }
 
-  private String requireStringValue(Object value) throws FallsProtocolException
+  private String requireStringValue(Object value) throws BaskStreamProtocolException
   {
     if (value == null)
     {
-      throw new FallsProtocolException("bad_request", "Field 'value' is required for this writable point.");
+      throw new BaskStreamProtocolException("bad_request", "Field 'value' is required for this writable point.");
     }
     return String.valueOf(value);
   }
 
-  private BDynamicEnum requireEnum(BEnumWritable point, Object value) throws FallsProtocolException
+  private BDynamicEnum requireEnum(BEnumWritable point, Object value) throws BaskStreamProtocolException
   {
     BEnumRange range = enumRange(point);
     if (value instanceof Number)
@@ -730,10 +734,10 @@ final class FallsWriteResolver
       }
       catch (NumberFormatException e)
       {
-        throw new FallsProtocolException("bad_request", "Enum value must be a valid tag or ordinal.");
+        throw new BaskStreamProtocolException("bad_request", "Enum value must be a valid tag or ordinal.");
       }
     }
-    throw new FallsProtocolException("bad_request", "Field 'value' is required for this enum writable point.");
+    throw new BaskStreamProtocolException("bad_request", "Field 'value' is required for this enum writable point.");
   }
 
   private Integer findEnumOrdinal(BEnumRange range, String candidate, Context context)
@@ -751,14 +755,14 @@ final class FallsWriteResolver
     return null;
   }
 
-  private BEnumRange enumRange(BEnumWritable point) throws FallsProtocolException
+  private BEnumRange enumRange(BEnumWritable point) throws BaskStreamProtocolException
   {
     BObject range = point.getEnumFacets().get(BFacets.RANGE);
     if (range instanceof BEnumRange)
     {
       return (BEnumRange) range;
     }
-    throw new FallsProtocolException("write_failed", "Enum writable point does not expose an enum range.");
+    throw new BaskStreamProtocolException("write_failed", "Enum writable point does not expose an enum range.");
   }
 
   private String activeLevel(BComponent component, Context context)
@@ -779,9 +783,18 @@ final class FallsWriteResolver
     return value instanceof String ? (String) value : null;
   }
 
-  private FallsProtocolException unsupportedAction(String actionName)
+  private void requireMaxSize(List<?> values, String key) throws BaskStreamProtocolException
   {
-    return new FallsProtocolException("unsupported_action",
+    if (values != null && values.size() > MAX_WRITE_POINTS_PER_REQUEST)
+    {
+      throw new BaskStreamProtocolException("bad_request",
+          "Field '" + key + "' cannot contain more than " + MAX_WRITE_POINTS_PER_REQUEST + " entries.");
+    }
+  }
+
+  private BaskStreamProtocolException unsupportedAction(String actionName)
+  {
+    return new BaskStreamProtocolException("unsupported_action",
         "Unsupported write action '" + actionName + "'.");
   }
 

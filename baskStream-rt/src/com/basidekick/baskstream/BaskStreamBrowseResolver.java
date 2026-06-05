@@ -1,4 +1,4 @@
-package com.basidekick.niagarafalls;
+package com.basidekick.baskstream;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -7,7 +7,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 import javax.baja.control.BControlPoint;
 import javax.baja.control.BIWritablePoint;
@@ -23,7 +22,9 @@ import javax.baja.history.ext.BHistoryExt;
 import javax.baja.naming.BOrd;
 import javax.baja.naming.OrdTarget;
 import javax.baja.nav.BINavNode;
+import javax.baja.status.BIStatus;
 import javax.baja.status.BIStatusValue;
+import javax.baja.status.BStatus;
 import javax.baja.status.BStatusValue;
 import javax.baja.sys.BAbsTime;
 import javax.baja.sys.BComponent;
@@ -38,24 +39,30 @@ import javax.baja.sys.Property;
 import javax.baja.tag.Relation;
 import javax.baja.tag.Tag;
 
-final class FallsBrowseResolver
+final class BaskStreamBrowseResolver
 {
   static final String METADATA_NONE = "none";
   static final String METADATA_FULL = "full";
 
   static final int DEFAULT_DEPTH = 1;
   static final int MAX_DEPTH = 4;
-  private static final int DEFAULT_SEARCH_LIMIT = 500;
-  private static final int MAX_SEARCH_LIMIT = 5000;
+  static final int DEFAULT_SEARCH_DEPTH = 32;
+  static final int MAX_SEARCH_DEPTH = 64;
+  static final int DEFAULT_SEARCH_LIMIT = 500;
+  static final int MAX_SEARCH_LIMIT = 5000;
+  static final int DEFAULT_SEARCH_MAX_VISITED = 50000;
+  static final int MAX_SEARCH_MAX_VISITED = 200000;
+  static final int DEFAULT_SEARCH_TIMEOUT_MILLIS = 5000;
+  static final int MAX_SEARCH_TIMEOUT_MILLIS = 30000;
 
-  private final BNiagaraFallsService service;
+  private final BBaskStreamService service;
 
-  FallsBrowseResolver(BNiagaraFallsService service)
+  BaskStreamBrowseResolver(BBaskStreamService service)
   {
     this.service = service;
   }
 
-  Map<String, Object> browse(String baseOrd, int depth, String metadataMode, Context context) throws FallsProtocolException
+  Map<String, Object> browse(String baseOrd, int depth, String metadataMode, Context context) throws BaskStreamProtocolException
   {
     String ord = normalizeOrd(baseOrd);
     int clampedDepth = clampDepth(depth);
@@ -64,7 +71,7 @@ final class FallsBrowseResolver
 
   Map<String, Object> search(
       String baseOrd,
-      int depth,
+      Object depthValue,
       String metadataMode,
       String query,
       String kind,
@@ -72,28 +79,51 @@ final class FallsBrowseResolver
       List<String> requiredOperations,
       Boolean writable,
       Object limitValue,
-      Context context) throws FallsProtocolException
+      Object maxVisitedValue,
+      Object timeoutMillisValue,
+      Context context) throws BaskStreamProtocolException
   {
     String ord = normalizeOrd(baseOrd);
-    int clampedDepth = clampDepth(depth);
+    int searchDepth = normalizeSearchDepth(depthValue);
     int limit = normalizeLimit(limitValue);
-    Map<String, Object> root = resolveNode(ord, context, clampedDepth, metadataMode);
+    int maxVisited = normalizeMaxVisited(maxVisitedValue);
+    int timeoutMillis = normalizeTimeoutMillis(timeoutMillisValue);
+    long deadline = System.currentTimeMillis() + timeoutMillis;
+    SearchNode root = resolveSearchRoot(ord, context);
     List<Object> matches = new ArrayList<Object>();
-    collectMatches(root, normalizeSearchText(query), normalizeSearchText(kind),
-        requiredFeatures, requiredOperations, writable, limit, matches);
+    List<Object> truncatedReasons = new ArrayList<Object>();
+    int visited = collectSearchMatches(
+        root,
+        searchDepth,
+        maxVisited,
+        deadline,
+        normalizeSearchText(query),
+        normalizeSearchText(kind),
+        requiredFeatures,
+        requiredOperations,
+        writable,
+        limit,
+        metadataMode,
+        context,
+        matches,
+        truncatedReasons);
 
     Map<String, Object> result = new LinkedHashMap<String, Object>();
     result.put("base", ord);
-    result.put("depth", Long.valueOf(clampedDepth));
+    result.put("depth", Long.valueOf(searchDepth));
     result.put("metadata", metadataMode);
     result.put("limit", Long.valueOf(limit));
+    result.put("maxVisited", Long.valueOf(maxVisited));
+    result.put("timeoutMillis", Long.valueOf(timeoutMillis));
+    result.put("visited", Long.valueOf(visited));
     result.put("count", Long.valueOf(matches.size()));
-    result.put("truncated", Boolean.valueOf(matches.size() >= limit));
+    result.put("truncated", Boolean.valueOf(!truncatedReasons.isEmpty()));
+    result.put("truncatedReasons", truncatedReasons);
     result.put("nodes", matches);
     return result;
   }
 
-  Map<String, Object> describe(String ord, String metadataMode, Context context) throws FallsProtocolException
+  Map<String, Object> describe(String ord, String metadataMode, Context context) throws BaskStreamProtocolException
   {
     return resolveNode(normalizeOrd(ord), context, 0, metadataMode);
   }
@@ -103,7 +133,7 @@ final class FallsBrowseResolver
     return ord != null && isAllowed(ord);
   }
 
-  int normalizeDepth(Object value) throws FallsProtocolException
+  int normalizeDepth(Object value) throws BaskStreamProtocolException
   {
     if (value == null)
     {
@@ -111,12 +141,12 @@ final class FallsBrowseResolver
     }
     if (!(value instanceof Number))
     {
-      throw new FallsProtocolException("bad_request", "Field 'depth' must be a number.");
+      throw new BaskStreamProtocolException("bad_request", "Field 'depth' must be a number.");
     }
     return clampDepth(((Number) value).intValue());
   }
 
-  String normalizeMetadataMode(Object value, String defaultMode) throws FallsProtocolException
+  String normalizeMetadataMode(Object value, String defaultMode) throws BaskStreamProtocolException
   {
     if (value == null)
     {
@@ -128,7 +158,7 @@ final class FallsBrowseResolver
     }
     if (!(value instanceof String))
     {
-      throw new FallsProtocolException("bad_request", "Field 'metadata' must be 'full', 'none', or a boolean.");
+      throw new BaskStreamProtocolException("bad_request", "Field 'metadata' must be 'full', 'none', or a boolean.");
     }
 
     String mode = ((String) value).trim().toLowerCase();
@@ -144,14 +174,14 @@ final class FallsBrowseResolver
     {
       return METADATA_NONE;
     }
-    throw new FallsProtocolException("bad_request", "Field 'metadata' must be 'full', 'none', or a boolean.");
+    throw new BaskStreamProtocolException("bad_request", "Field 'metadata' must be 'full', 'none', or a boolean.");
   }
 
-  private Map<String, Object> resolveNode(String ord, Context context, int depth, String metadataMode) throws FallsProtocolException
+  private Map<String, Object> resolveNode(String ord, Context context, int depth, String metadataMode) throws BaskStreamProtocolException
   {
     if (!isAllowed(ord))
     {
-      throw new FallsProtocolException("forbidden_point", "Node is outside the allowedPathPatterns policy.");
+      throw new BaskStreamProtocolException("forbidden_point", "Node is outside the allowedPathPatterns policy.");
     }
 
     try
@@ -159,13 +189,13 @@ final class FallsBrowseResolver
       OrdTarget target = BOrd.make(ord).resolve(service, context);
       if (!target.canRead())
       {
-        throw new FallsProtocolException("forbidden_point", "Node is not readable for the authenticated user.");
+        throw new BaskStreamProtocolException("forbidden_point", "Node is not readable for the authenticated user.");
       }
 
       BObject object = target.get();
       if (object == null)
       {
-        throw new FallsProtocolException("invalid_point", "Resolved browse target was null.");
+        throw new BaskStreamProtocolException("invalid_point", "Resolved browse target was null.");
       }
 
       BINavNode navNode = object instanceof BINavNode
@@ -174,18 +204,18 @@ final class FallsBrowseResolver
 
       if (navNode == null)
       {
-        throw new FallsProtocolException("invalid_point", "Resolved target is not browsable.");
+        throw new BaskStreamProtocolException("invalid_point", "Resolved target is not browsable.");
       }
 
       return toWire(navNode, target, context, depth, metadataMode);
     }
-    catch (FallsProtocolException e)
+    catch (BaskStreamProtocolException e)
     {
       throw e;
     }
     catch (Exception e)
     {
-      throw new FallsProtocolException("browse_failed",
+      throw new BaskStreamProtocolException("browse_failed",
           e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
     }
   }
@@ -211,6 +241,7 @@ final class FallsBrowseResolver
     wire.put("display", safe(navNode.getNavDisplayName(context)));
     wire.put("description", safe(navNode.getNavDescription(context)));
     wire.put("typeSpec", typeSpec);
+    putComponentStatus(wire, component, context);
     wire.put("kind", classifyKind(point, schedule, hasChildren));
     wire.put("hasChildren", Boolean.valueOf(hasChildren));
     wire.put("writable", Boolean.valueOf(writable));
@@ -613,7 +644,38 @@ final class FallsBrowseResolver
     summary.put("name", component.getName());
     summary.put("display", safe(component.getDisplayName(context)));
     summary.put("typeSpec", component.getType().toString());
+    putComponentStatus(summary, component, context);
     return summary;
+  }
+
+  private void putComponentStatus(Map<String, Object> wire, BComponent component, Context context)
+  {
+    if (component == null)
+    {
+      return;
+    }
+    BStatus status = componentStatus(component);
+    if (status == null)
+    {
+      return;
+    }
+    wire.put("status", status.toString(context));
+    wire.put("ok", Boolean.valueOf(status.isOk()));
+  }
+
+  private BStatus componentStatus(BComponent component)
+  {
+    if (component instanceof BIStatus)
+    {
+      return ((BIStatus) component).getStatus();
+    }
+    if (component instanceof BIStatusValue)
+    {
+      BStatusValue statusValue = ((BIStatusValue) component).getStatusValue();
+      return statusValue == null ? null : statusValue.getStatus();
+    }
+    BValue status = componentValue(component, "status");
+    return status instanceof BStatus ? (BStatus) status : null;
   }
 
   private List<Object> ancestors(BComponent component, Context context)
@@ -981,8 +1043,7 @@ final class FallsBrowseResolver
       return null;
     }
 
-    int index = ord.indexOf("slot:/");
-    return index >= 0 ? ord.substring(index) : ord;
+    return BaskStreamAccessPolicy.extractSlotOrd(ord);
   }
 
   private Map<String, Object> fallbackNode(BINavNode navNode, String ord, String error, String metadataMode)
@@ -1010,48 +1071,160 @@ final class FallsBrowseResolver
     return wire;
   }
 
-  private void collectMatches(
-      Map<String, Object> node,
+  private SearchNode resolveSearchRoot(String ord, Context context) throws BaskStreamProtocolException
+  {
+    if (!isAllowed(ord))
+    {
+      throw new BaskStreamProtocolException("forbidden_point", "Node is outside the allowedPathPatterns policy.");
+    }
+
+    try
+    {
+      OrdTarget target = BOrd.make(ord).resolve(service, context);
+      if (!target.canRead())
+      {
+        throw new BaskStreamProtocolException("forbidden_point", "Node is not readable for the authenticated user.");
+      }
+
+      BObject object = target.get();
+      if (object == null)
+      {
+        throw new BaskStreamProtocolException("invalid_point", "Resolved search target was null.");
+      }
+
+      BINavNode navNode = object instanceof BINavNode
+          ? (BINavNode) object
+          : (target.getComponent() instanceof BINavNode ? (BINavNode) target.getComponent() : null);
+
+      if (navNode == null)
+      {
+        throw new BaskStreamProtocolException("invalid_point", "Resolved target is not searchable.");
+      }
+
+      return new SearchNode(navNode, target, 0, ord);
+    }
+    catch (BaskStreamProtocolException e)
+    {
+      throw e;
+    }
+    catch (Exception e)
+    {
+      throw new BaskStreamProtocolException("search_failed",
+          e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+    }
+  }
+
+  private int collectSearchMatches(
+      SearchNode root,
+      int maxDepth,
+      int maxVisited,
+      long deadline,
       String query,
       String kind,
       List<String> requiredFeatures,
       List<String> requiredOperations,
       Boolean writable,
       int limit,
-      List<Object> matches)
+      String metadataMode,
+      Context context,
+      List<Object> matches,
+      List<Object> truncatedReasons)
   {
-    if (node == null || matches.size() >= limit)
+    List<SearchNode> stack = new ArrayList<SearchNode>();
+    Set<String> seen = new LinkedHashSet<String>();
+    stack.add(root);
+    int visited = 0;
+
+    while (!stack.isEmpty())
     {
-      return;
-    }
-    if (matches(node, query, kind, requiredFeatures, requiredOperations, writable))
-    {
-      Map<String, Object> shallow = new LinkedHashMap<String, Object>(node);
-      shallow.remove("children");
-      matches.add(shallow);
+      if (System.currentTimeMillis() > deadline)
+      {
+        addTruncationReason(truncatedReasons, "timeout");
+        break;
+      }
+      if (visited >= maxVisited)
+      {
+        addTruncationReason(truncatedReasons, "visited");
+        break;
+      }
       if (matches.size() >= limit)
       {
-        return;
+        addTruncationReason(truncatedReasons, "limit");
+        break;
       }
-    }
 
-    Object rawChildren = node.get("children");
-    if (!(rawChildren instanceof List))
-    {
-      return;
-    }
-    for (Object child : (List<?>) rawChildren)
-    {
-      if (child instanceof Map)
+      SearchNode current = stack.remove(stack.size() - 1);
+      String key = current.key();
+      if (key != null && !seen.add(key))
       {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> childNode = (Map<String, Object>) child;
-        collectMatches(childNode, query, kind, requiredFeatures, requiredOperations, writable, limit, matches);
+        continue;
+      }
+      visited++;
+
+      Map<String, Object> node = toWire(current.navNode, current.target, context, 0, metadataMode);
+      if (matches(node, query, kind, requiredFeatures, requiredOperations, writable))
+      {
+        matches.add(node);
         if (matches.size() >= limit)
         {
-          return;
+          addTruncationReason(truncatedReasons, "limit");
+          break;
         }
       }
+
+      if (!current.navNode.hasNavChildren())
+      {
+        continue;
+      }
+      if (current.depth >= maxDepth)
+      {
+        addTruncationReason(truncatedReasons, "depth");
+        continue;
+      }
+
+      BINavNode[] children = current.navNode.getNavChildren();
+      for (int i = children.length - 1; i >= 0; i--)
+      {
+        SearchNode child = resolveSearchChild(children[i], current.depth + 1, context);
+        if (child != null)
+        {
+          stack.add(child);
+        }
+      }
+    }
+    return visited;
+  }
+
+  private SearchNode resolveSearchChild(BINavNode child, int depth, Context context)
+  {
+    BOrd ord = child.getNavOrd();
+    if (ord == null)
+    {
+      return null;
+    }
+
+    String rawOrd = ord.toString();
+    try
+    {
+      OrdTarget target = ord.resolve(service, context);
+      String slotOrd = slotOrd(target, rawOrd);
+      if (slotOrd == null || !isAllowed(slotOrd) || !target.canRead())
+      {
+        return null;
+      }
+      return new SearchNode(child, target, depth, slotOrd);
+    }
+    catch (Exception ignored)
+    {
+      return null;
+    }
+  }
+
+  private void addTruncationReason(List<Object> reasons, String reason)
+  {
+    if (!reasons.contains(reason))
+    {
+      reasons.add(reason);
     }
   }
 
@@ -1140,7 +1313,7 @@ final class FallsBrowseResolver
     return value.trim().toLowerCase();
   }
 
-  private int normalizeLimit(Object value) throws FallsProtocolException
+  private int normalizeLimit(Object value) throws BaskStreamProtocolException
   {
     if (value == null)
     {
@@ -1148,7 +1321,7 @@ final class FallsBrowseResolver
     }
     if (!(value instanceof Number))
     {
-      throw new FallsProtocolException("bad_request", "Field 'limit' must be a number.");
+      throw new BaskStreamProtocolException("bad_request", "Field 'limit' must be a number.");
     }
     int limit = ((Number) value).intValue();
     if (limit <= 0)
@@ -1156,6 +1329,60 @@ final class FallsBrowseResolver
       return DEFAULT_SEARCH_LIMIT;
     }
     return Math.min(limit, MAX_SEARCH_LIMIT);
+  }
+
+  private int normalizeSearchDepth(Object value) throws BaskStreamProtocolException
+  {
+    if (value == null)
+    {
+      return DEFAULT_SEARCH_DEPTH;
+    }
+    if (!(value instanceof Number))
+    {
+      throw new BaskStreamProtocolException("bad_request", "Field 'depth' must be a number.");
+    }
+    int depth = ((Number) value).intValue();
+    if (depth < 0)
+    {
+      return 0;
+    }
+    return Math.min(depth, MAX_SEARCH_DEPTH);
+  }
+
+  private int normalizeMaxVisited(Object value) throws BaskStreamProtocolException
+  {
+    if (value == null)
+    {
+      return DEFAULT_SEARCH_MAX_VISITED;
+    }
+    if (!(value instanceof Number))
+    {
+      throw new BaskStreamProtocolException("bad_request", "Field 'maxVisited' must be a number.");
+    }
+    int maxVisited = ((Number) value).intValue();
+    if (maxVisited <= 0)
+    {
+      return DEFAULT_SEARCH_MAX_VISITED;
+    }
+    return Math.min(maxVisited, MAX_SEARCH_MAX_VISITED);
+  }
+
+  private int normalizeTimeoutMillis(Object value) throws BaskStreamProtocolException
+  {
+    if (value == null)
+    {
+      return DEFAULT_SEARCH_TIMEOUT_MILLIS;
+    }
+    if (!(value instanceof Number))
+    {
+      throw new BaskStreamProtocolException("bad_request", "Field 'timeoutMillis' must be a number.");
+    }
+    int timeoutMillis = ((Number) value).intValue();
+    if (timeoutMillis <= 0)
+    {
+      return DEFAULT_SEARCH_TIMEOUT_MILLIS;
+    }
+    return Math.min(timeoutMillis, MAX_SEARCH_TIMEOUT_MILLIS);
   }
 
   private List<Object> buildFeatures(boolean point, boolean history, boolean alarm, boolean schedule)
@@ -1282,12 +1509,12 @@ final class FallsBrowseResolver
     return false;
   }
 
-  private String normalizeOrd(String ord) throws FallsProtocolException
+  private String normalizeOrd(String ord) throws BaskStreamProtocolException
   {
     String candidate = ord == null || ord.trim().length() == 0 ? "slot:/" : ord.trim();
     if (!candidate.startsWith("slot:/"))
     {
-      throw new FallsProtocolException("invalid_point", "Only slot:/ ORDs are supported.");
+      throw new BaskStreamProtocolException("invalid_point", "Only slot:/ ORDs are supported.");
     }
     return candidate;
   }
@@ -1307,58 +1534,33 @@ final class FallsBrowseResolver
 
   private boolean isAllowed(String ord)
   {
-    for (Pattern pattern : parsePatterns(service.getAllowedPathPatterns()))
-    {
-      if (pattern.matcher(ord).matches())
-      {
-        return true;
-      }
-    }
-    return false;
+    return BaskStreamAccessPolicy.isAllowed(service, ord);
   }
 
-  private static List<Pattern> parsePatterns(String configured)
+  private static final class SearchNode
   {
-    String raw = configured == null ? "" : configured;
-    String[] pieces = raw.split("[\\r\\n,;]+");
-    List<Pattern> patterns = new ArrayList<Pattern>();
-    for (int i = 0; i < pieces.length; i++)
-    {
-      String trimmed = pieces[i].trim();
-      if (trimmed.length() == 0)
-      {
-        continue;
-      }
-      patterns.add(Pattern.compile(toRegex(trimmed)));
-    }
-    if (patterns.isEmpty())
-    {
-      patterns.add(Pattern.compile(toRegex("slot:/*")));
-    }
-    return patterns;
-  }
+    final BINavNode navNode;
+    final OrdTarget target;
+    final int depth;
+    final String slotOrd;
 
-  private static String toRegex(String wildcard)
-  {
-    StringBuilder regex = new StringBuilder("^");
-    for (int i = 0; i < wildcard.length(); i++)
+    SearchNode(BINavNode navNode, OrdTarget target, int depth, String slotOrd)
     {
-      char ch = wildcard.charAt(i);
-      if (ch == '*')
-      {
-        regex.append(".*");
-      }
-      else if ("\\.[]{}()+-^$?|".indexOf(ch) >= 0)
-      {
-        regex.append('\\').append(ch);
-      }
-      else
-      {
-        regex.append(ch);
-      }
+      this.navNode = navNode;
+      this.target = target;
+      this.depth = depth;
+      this.slotOrd = slotOrd;
     }
-    regex.append('$');
-    return regex.toString();
+
+    String key()
+    {
+      if (slotOrd != null)
+      {
+        return slotOrd;
+      }
+      BOrd ord = navNode.getNavOrd();
+      return ord == null ? null : ord.toString();
+    }
   }
 
   private static String safe(String value)

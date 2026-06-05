@@ -1,0 +1,6 @@
+<!-- Module Include File -->
+<!-- Types -->
+<types>
+  <!--com.basidekick.baskstream-->
+  <type class="com.basidekick.baskstream.BBaskStreamService" name="BaskStreamService"/>
+</types>

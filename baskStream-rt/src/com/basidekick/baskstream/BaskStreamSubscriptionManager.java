@@ -1,21 +1,21 @@
-package com.basidekick.niagarafalls;
+package com.basidekick.baskstream;
 
 import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-final class FallsSubscriptionManager
+final class BaskStreamSubscriptionManager
 {
-  private final BNiagaraFallsService service;
-  private final Set<FallsClientSession> sessions =
-      Collections.newSetFromMap(new ConcurrentHashMap<FallsClientSession, Boolean>());
+  private final BBaskStreamService service;
+  private final Set<BaskStreamClientSession> sessions =
+      Collections.newSetFromMap(new ConcurrentHashMap<BaskStreamClientSession, Boolean>());
 
-  FallsSubscriptionManager(BNiagaraFallsService service)
+  BaskStreamSubscriptionManager(BBaskStreamService service)
   {
     this.service = service;
   }
 
-  boolean register(FallsClientSession session)
+  boolean register(BaskStreamClientSession session)
   {
     if (getActiveConnectionCount() >= service.getMaxConnectionsValue())
     {
@@ -28,7 +28,7 @@ final class FallsSubscriptionManager
     return added;
   }
 
-  void unregister(FallsClientSession session)
+  void unregister(BaskStreamClientSession session)
   {
     sessions.remove(session);
     refreshMetrics();
@@ -37,7 +37,7 @@ final class FallsSubscriptionManager
   void refreshMetrics()
   {
     int totalSubscriptions = 0;
-    for (FallsClientSession session : sessions)
+    for (BaskStreamClientSession session : sessions)
     {
       totalSubscriptions += session.getSubscriptionCount();
     }
@@ -51,7 +51,7 @@ final class FallsSubscriptionManager
 
   void shutdown()
   {
-    for (FallsClientSession session : sessions.toArray(new FallsClientSession[0]))
+    for (BaskStreamClientSession session : sessions.toArray(new BaskStreamClientSession[0]))
     {
       session.close("service stopped");
     }

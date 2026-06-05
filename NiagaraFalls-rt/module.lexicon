@@ -1,6 +1,0 @@
-#
-# Lexicon for the NiagaraFalls module.
-#
-type.NiagaraFallsService=Niagara Falls Service
-slot.NiagaraFallsService.servletName=Servlet Name
-slot.NiagaraFallsService.wsPath=WebSocket Path

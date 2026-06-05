@@ -1,4 +1,4 @@
-# NiagaraFalls Development Notes
+# baskStream Development Notes
 
 ## Working Agreement
 
@@ -25,8 +25,8 @@ This module was cross-checked against the local Obsidian Niagara developer-guide
 
 ## Follow-up Candidates
 
-- Migrate `BNiagaraFallsService` to annotations and let Slot-o-matic regenerate `module-include.xml`.
-- If websocket lifecycle behavior is flaky on-station, move the transport into a container-managed servlet declared through `WEB-INF/web.xml`, and keep `BNiagaraFallsService` focused on configuration/runtime state.
+- Migrate `BBaskStreamService` to annotations and let Slot-o-matic regenerate `module-include.xml`.
+- If websocket lifecycle behavior is flaky on-station, move the transport into a container-managed servlet declared through `WEB-INF/web.xml`, and keep `BBaskStreamService` focused on configuration/runtime state.
 
 ## Alarm Subscription Shape
 

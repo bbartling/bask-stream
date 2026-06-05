@@ -1,0 +1,7 @@
+#
+# Lexicon for the baskStream module.
+#
+type.BaskStreamService=BASkStreamService
+slot.BaskStreamService.servletName=Servlet Name
+slot.BaskStreamService.wsPath=WebSocket Path
+slot.BaskStreamService.allowedOrigins=Allowed Origins

@@ -1,4 +1,4 @@
-package com.basidekick.niagarafalls;
+package com.basidekick.baskstream;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -32,36 +32,36 @@ import org.eclipse.jetty.websocket.servlet.ServletUpgradeRequest;
 import org.eclipse.jetty.websocket.servlet.ServletUpgradeResponse;
 import org.eclipse.jetty.websocket.servlet.WebSocketCreator;
 
-final class FallsWebSocketRuntime
+final class BaskStreamWebSocketRuntime
 {
   private static final String HTTP_CONNECTION_ATTRIBUTE = "org.eclipse.jetty.server.HttpConnection";
   private static final String HTTP_UPGRADE_ATTRIBUTE = "org.eclipse.jetty.server.HttpConnection.UPGRADE";
   private static final String SUPPORTED_WS_VERSION = "13";
 
-  private final BNiagaraFallsService service;
-  private final FallsCodec codec;
-  private final FallsPointResolver resolver;
-  private final FallsBrowseResolver browseResolver;
-  private final FallsHistoryResolver historyResolver;
-  private final FallsAlarmResolver alarmResolver;
-  private final FallsScheduleResolver scheduleResolver;
-  private final FallsWriteResolver writeResolver;
-  private final FallsSubscriptionManager subscriptions;
+  private final BBaskStreamService service;
+  private final BaskStreamCodec codec;
+  private final BaskStreamPointResolver resolver;
+  private final BaskStreamBrowseResolver browseResolver;
+  private final BaskStreamHistoryResolver historyResolver;
+  private final BaskStreamAlarmResolver alarmResolver;
+  private final BaskStreamScheduleResolver scheduleResolver;
+  private final BaskStreamWriteResolver writeResolver;
+  private final BaskStreamSubscriptionManager subscriptions;
   private final ScheduledExecutorService scheduler;
   private volatile WebSocketServerFactory socketFactory;
 
-  FallsWebSocketRuntime(BNiagaraFallsService service)
+  BaskStreamWebSocketRuntime(BBaskStreamService service)
   {
     this.service = service;
-    this.codec = new FallsCodec();
-    this.resolver = new FallsPointResolver(service);
-    this.browseResolver = new FallsBrowseResolver(service);
-    this.historyResolver = new FallsHistoryResolver(service);
-    this.alarmResolver = new FallsAlarmResolver(service);
-    this.scheduleResolver = new FallsScheduleResolver(service);
-    this.writeResolver = new FallsWriteResolver(service, resolver);
-    this.subscriptions = new FallsSubscriptionManager(service);
-    this.scheduler = Executors.newSingleThreadScheduledExecutor(new FallsThreadFactory());
+    this.codec = new BaskStreamCodec();
+    this.resolver = new BaskStreamPointResolver(service);
+    this.browseResolver = new BaskStreamBrowseResolver(service);
+    this.historyResolver = new BaskStreamHistoryResolver(service);
+    this.alarmResolver = new BaskStreamAlarmResolver(service);
+    this.scheduleResolver = new BaskStreamScheduleResolver(service);
+    this.writeResolver = new BaskStreamWriteResolver(service, resolver);
+    this.subscriptions = new BaskStreamSubscriptionManager(service);
+    this.scheduler = Executors.newSingleThreadScheduledExecutor(new BaskStreamThreadFactory());
   }
 
   void handleUpgrade(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
@@ -74,10 +74,15 @@ final class FallsWebSocketRuntime
         response.sendError(HttpServletResponse.SC_BAD_REQUEST, "WebSocket upgrade required.");
         return;
       }
+      if (!isAllowedOrigin(request))
+      {
+        response.sendError(HttpServletResponse.SC_FORBIDDEN, "WebSocket Origin is not allowed.");
+        return;
+      }
 
       ServletUpgradeRequest upgradeRequest = new ServletUpgradeRequest(request);
       ServletUpgradeResponse upgradeResponse = new ServletUpgradeResponse(response);
-      FallsSocketCreator creator = new FallsSocketCreator(this);
+      BaskStreamSocketCreator creator = new BaskStreamSocketCreator(this);
       Object endpoint = creator.createWebSocket(upgradeRequest, upgradeResponse);
 
       if (upgradeResponse.isCommitted())
@@ -114,7 +119,7 @@ final class FallsWebSocketRuntime
     }
     catch (Exception e)
     {
-      throw new ServletException("Unable to upgrade NiagaraFalls websocket request.", e);
+      throw new ServletException("Unable to upgrade baskStream websocket request.", e);
     }
   }
 
@@ -207,52 +212,179 @@ final class FallsWebSocketRuntime
     return created;
   }
 
-  FallsCodec getCodec()
+  private boolean isAllowedOrigin(HttpServletRequest request)
+  {
+    String origin = request.getHeader("Origin");
+    if (origin == null || origin.trim().length() == 0)
+    {
+      return true;
+    }
+
+    String normalizedOrigin = normalizeOrigin(origin);
+    if (normalizedOrigin == null)
+    {
+      return false;
+    }
+    if (normalizedOrigin.equalsIgnoreCase(requestOrigin(request)))
+    {
+      return true;
+    }
+
+    String configured = service.getAllowedOrigins();
+    String[] pieces = configured == null ? new String[0] : configured.split("[\\r\\n,;]+");
+    for (int i = 0; i < pieces.length; i++)
+    {
+      String allowed = normalizeOrigin(pieces[i]);
+      if (allowed != null && allowed.equalsIgnoreCase(normalizedOrigin))
+      {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static String requestOrigin(HttpServletRequest request)
+  {
+    String scheme = request.getScheme();
+    String host = request.getHeader("Host");
+    if (host == null || host.trim().length() == 0)
+    {
+      host = request.getServerName();
+      int port = request.getServerPort();
+      if (port > 0 && !isDefaultPort(scheme, port))
+      {
+        host = host + ":" + port;
+      }
+    }
+    return normalizeOrigin(scheme + "://" + host);
+  }
+
+  private static String normalizeOrigin(String origin)
+  {
+    if (origin == null)
+    {
+      return null;
+    }
+    String value = origin.trim();
+    if (value.length() == 0 || "*".equals(value))
+    {
+      return null;
+    }
+
+    int schemeEnd = value.indexOf("://");
+    if (schemeEnd <= 0)
+    {
+      return null;
+    }
+    String scheme = value.substring(0, schemeEnd).toLowerCase(Locale.ENGLISH);
+    String authority = value.substring(schemeEnd + 3);
+    int slash = authority.indexOf('/');
+    if (slash >= 0)
+    {
+      authority = authority.substring(0, slash);
+    }
+    authority = authority.toLowerCase(Locale.ENGLISH);
+    if (authority.startsWith("["))
+    {
+      int close = authority.indexOf(']');
+      if (close < 0)
+      {
+        return null;
+      }
+      if (close + 1 < authority.length())
+      {
+        if (authority.charAt(close + 1) != ':')
+        {
+          return null;
+        }
+        try
+        {
+          int port = Integer.parseInt(authority.substring(close + 2));
+          if (isDefaultPort(scheme, port))
+          {
+            authority = authority.substring(0, close + 1);
+          }
+        }
+        catch (NumberFormatException ignored)
+        {
+          return null;
+        }
+      }
+    }
+    else
+    {
+      int colon = authority.lastIndexOf(':');
+      if (colon > 0)
+      {
+        try
+        {
+          int port = Integer.parseInt(authority.substring(colon + 1));
+          if (isDefaultPort(scheme, port))
+          {
+            authority = authority.substring(0, colon);
+          }
+        }
+        catch (NumberFormatException ignored)
+        {
+          return null;
+        }
+      }
+    }
+    return scheme + "://" + authority;
+  }
+
+  private static boolean isDefaultPort(String scheme, int port)
+  {
+    return ("http".equalsIgnoreCase(scheme) && port == 80)
+        || ("https".equalsIgnoreCase(scheme) && port == 443);
+  }
+
+  BaskStreamCodec getCodec()
   {
     return codec;
   }
 
-  FallsPointResolver getResolver()
+  BaskStreamPointResolver getResolver()
   {
     return resolver;
   }
 
-  FallsBrowseResolver getBrowseResolver()
+  BaskStreamBrowseResolver getBrowseResolver()
   {
     return browseResolver;
   }
 
-  FallsHistoryResolver getHistoryResolver()
+  BaskStreamHistoryResolver getHistoryResolver()
   {
     return historyResolver;
   }
 
-  FallsAlarmResolver getAlarmResolver()
+  BaskStreamAlarmResolver getAlarmResolver()
   {
     return alarmResolver;
   }
 
-  FallsScheduleResolver getScheduleResolver()
+  BaskStreamScheduleResolver getScheduleResolver()
   {
     return scheduleResolver;
   }
 
-  FallsWriteResolver getWriteResolver()
+  BaskStreamWriteResolver getWriteResolver()
   {
     return writeResolver;
   }
 
-  BNiagaraFallsService getService()
+  BBaskStreamService getService()
   {
     return service;
   }
 
-  boolean onOpen(FallsClientSession session)
+  boolean onOpen(BaskStreamClientSession session)
   {
     return subscriptions.register(session);
   }
 
-  void onClose(FallsClientSession session)
+  void onClose(BaskStreamClientSession session)
   {
     subscriptions.unregister(session);
   }
@@ -276,19 +408,19 @@ final class FallsWebSocketRuntime
         }
         catch (Throwable e)
         {
-          service.LOG.log(Level.WARNING, "NiagaraFalls scheduled task failed", e);
+          service.LOG.log(Level.WARNING, "baskStream scheduled task failed", e);
         }
       }
     }, safeDelay, TimeUnit.MILLISECONDS);
   }
 
-  FallsClientSession buildSession(FallsJettyWebSocketConnection connection, ServletUpgradeRequest request)
-      throws FallsProtocolException
+  BaskStreamClientSession buildSession(BaskStreamJettyWebSocketConnection connection, ServletUpgradeRequest request)
+      throws BaskStreamProtocolException
   {
     Principal principal = request.getUserPrincipal();
     if (!(principal instanceof BUser))
     {
-      throw new FallsProtocolException("auth_required", "Authenticated Niagara user is required.");
+      throw new BaskStreamProtocolException("auth_required", "Authenticated Niagara user is required.");
     }
 
     BUser user = (BUser) principal;
@@ -302,7 +434,7 @@ final class FallsWebSocketRuntime
         ? new BasicContext(user)
         : new BasicContext(user, language);
 
-    return new FallsClientSession(this, connection, user, context);
+    return new BaskStreamClientSession(this, connection, user, context);
   }
 
   void stop()
@@ -319,29 +451,29 @@ final class FallsWebSocketRuntime
       }
       catch (Exception e)
       {
-        service.LOG.log(Level.FINE, "Unable to stop NiagaraFalls websocket factory cleanly", e);
+        service.LOG.log(Level.FINE, "Unable to stop baskStream websocket factory cleanly", e);
       }
     }
   }
 
-  private static final class FallsThreadFactory implements ThreadFactory
+  private static final class BaskStreamThreadFactory implements ThreadFactory
   {
     private int next;
 
     @Override
     public Thread newThread(Runnable task)
     {
-      Thread thread = new Thread(task, "NiagaraFalls-websocket-" + (++next));
+      Thread thread = new Thread(task, "baskStream-websocket-" + (++next));
       thread.setDaemon(true);
       return thread;
     }
   }
 
-  private static final class FallsSocketCreator implements WebSocketCreator
+  private static final class BaskStreamSocketCreator implements WebSocketCreator
   {
-    private final FallsWebSocketRuntime runtime;
+    private final BaskStreamWebSocketRuntime runtime;
 
-    private FallsSocketCreator(FallsWebSocketRuntime runtime)
+    private BaskStreamSocketCreator(BaskStreamWebSocketRuntime runtime)
     {
       this.runtime = runtime;
     }
@@ -375,7 +507,7 @@ final class FallsWebSocketRuntime
         return null;
       }
 
-      return new FallsJettyWebSocketConnection(runtime, request);
+      return new BaskStreamJettyWebSocketConnection(runtime, request);
     }
   }
 }

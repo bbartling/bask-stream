@@ -10,14 +10,14 @@ import tls from "node:tls";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const htmlPath = path.join(__dirname, "niagarafalls-nav-tree.html");
+const htmlPath = path.join(__dirname, "baskstream-nav-tree.html");
 const port = Number(process.env.PORT || process.argv.find((arg) => arg.startsWith("--port="))?.split("=")[1] || 8787);
 const host = process.env.HOST || "127.0.0.1";
 const decoder = new TextDecoder();
 
 const server = http.createServer(async (req, res) => {
   try {
-    if (req.url === "/" || req.url === "/niagarafalls-nav-tree.html") {
+    if (req.url === "/" || req.url === "/baskstream-nav-tree.html") {
       const html = await fs.readFile(htmlPath, "utf8");
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       res.end(html);
@@ -57,7 +57,7 @@ server.on("upgrade", (req, socket) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`NiagaraFalls nav tree app: http://${host}:${port}/`);
+  console.log(`baskStream nav tree app: http://${host}:${port}/`);
 });
 
 class AppSession {
@@ -207,7 +207,7 @@ class AppSession {
     }
 
     await this.request("GET", "/j_security_check/");
-    const health = await this.request("GET", "/falls/health");
+    const health = await this.request("GET", "/stream/health");
     if (health.status !== 200) {
       throw new Error(`Health check failed after login with HTTP ${health.status}.`);
     }
@@ -275,7 +275,7 @@ class AppSession {
       };
       socket.once("connect", () => {
         socket.write(
-          "GET /falls HTTP/1.1\r\n" +
+          "GET /stream HTTP/1.1\r\n" +
           `Host: ${this.stationUrl.host}\r\n` +
           "Upgrade: websocket\r\n" +
           "Connection: Upgrade\r\n" +
