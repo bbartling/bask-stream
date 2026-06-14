@@ -1,8 +1,29 @@
 # Python baskStream test tools
 
-Small read-only Python scripts for testing a Niagara station with the `baskStream` module installed.
+This was tested on a bench setup with a BACnet MS/TP device integrated into the Niagara station through a BACnet router. 
+![Screenshot1](./bacnet_5007.png)
 
-These are intended for commissioning, diagnostics, and early Open-FDD connector experiments. They do **not** write to points, acknowledge alarms, or issue overrides.
+
+![Screenshot2](./services.png)
+Validation was performed in Python from both the Windows machine (192.168.204.11) running the station locally and a Linux device on the same test-bench LAN.
+
+
+## Py packages
+
+Install these Python packages:
+
+```text
+requests
+websocket-client
+msgpack
+````
+
+Example:
+
+```bash
+pip install requests websocket-client msgpack
+```
+
 
 ## Files
 
@@ -63,47 +84,7 @@ On macOS, if `nc` behaves differently, use:
 nmap -Pn -p 443 192.168.204.11
 ```
 
-## Install
 
-### Windows PowerShell
-
-```powershell
-cd .\tools\python
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-py -m pip install -r requirements.txt
-```
-
-If script activation is blocked:
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-.\.venv\Scripts\Activate.ps1
-```
-
-### Linux bash
-
-```bash
-cd tools/python
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -r requirements.txt
-```
-
-### macOS zsh/bash
-
-```zsh
-cd tools/python
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -r requirements.txt
-```
-
-If macOS does not have Python 3 installed:
-
-```zsh
-brew install python
-```
 
 ## PowerShell ORD quoting
 
@@ -430,94 +411,3 @@ python3 baskstream_cli.py \
   --read
 ```
 
-## Notes for remote Open-FDD servers
-
-For a backend Python connector running on Linux or macOS, `Allowed Origins` usually does not need to include the Open-FDD server. Origin allowlists are mainly for browser JavaScript clients. The preferred architecture is:
-
-```text
-Browser/UI
-  -> Open-FDD backend
-    -> Python baskStream connector
-      -> Niagara https://<station>/stream
-```
-
-Only add remote origins if a browser page served from the Open-FDD host connects directly to Niagara's `/stream` WebSocket.
-
-## Notes for Open-FDD
-
-A safe first Open-FDD Niagara connector should remain read-only:
-
-```text
-Niagara station
-  -> baskStream /stream WebSocket
-  -> cached discovery of devices/points/schedules
-  -> bounded batch reads
-  -> Arrow table
-  -> Open-FDD rules
-```
-
-Recommended connector behavior:
-
-- Cache discovery results.
-- Use shallow browse and depth limits.
-- Read values in batches.
-- Avoid subscribing to every point forever.
-- Do not implement writes/overrides until a separate safety model exists.
-- Use dedicated read-only Niagara users for production testing.
-
-## Troubleshooting
-
-`/stream/health` returns `302`:
-
-- The client is not logged in yet.
-- Confirm the username can log into Niagara Web.
-- If this is from `curl`, it may still be a good network test.
-
-`/stream/health` returns `403`:
-
-- The user is authenticated but not allowed to access the service/path.
-- Test with a known-good admin user.
-- Confirm `BASkStreamService` is enabled.
-
-Tree or values returns nothing for a BACnet device:
-
-- In PowerShell, check that the ORD is in single quotes.
-- Try browsing the parent first:
-  ```powershell
-  py .\baskstream_cli.py --station https://localhost --user admin --ask-pass tree --base 'slot:/Drivers/BacnetNetwork' --depth 2
-  ```
-- Use the exact ORD printed by the tree command.
-
-The output explodes into the entire station:
-
-- The CLI skips external slot jumps by default.
-- Keep `--follow-external` off unless intentionally exploring cross-links.
-- Lower `--depth` or `--max-nodes`.
-
-Remote Linux or macOS cannot connect:
-
-- Test the port:
-  ```bash
-  nc -vz <station-ip> 443
-  ```
-- Test the health endpoint:
-  ```bash
-  curl -k -i https://<station-ip>/stream/health
-  ```
-- Check Windows firewall on the Niagara host.
-- Use the same station URL in the scripts that you tested with `curl`.
-
-## Suggested contribution location
-
-For a PR to `bask-stream`, a low-friction location would be:
-
-```text
-tools/python/
-  README.md
-  requirements.txt
-  baskstream_client.py
-  baskstream_cli.py
-  baskstream_smoke.py
-```
-
-These scripts are intentionally read-only and dependency-light so they are easy to review.
